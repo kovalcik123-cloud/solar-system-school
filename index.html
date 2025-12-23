@@ -425,6 +425,7 @@
 
         function stopQuiz() {
             isQuizMode = false;
+            isWaiting = false; // Reset waiting status when stopping
             document.getElementById('quiz-overlay').style.display = 'none';
             document.getElementById('results-screen').style.display = 'none';
             document.getElementById('side-ui').style.visibility = 'visible';
