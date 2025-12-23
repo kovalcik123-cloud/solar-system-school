@@ -8,12 +8,10 @@
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; touch-action: none; }
         #canvas-container { width: 100vw; height: 100vh; display: block; z-index: 1; }
         
-        /* --- LOADER --- */
         #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; justify-content: center; align-items: center; z-index: 2000; transition: opacity 0.8s; }
         .spinner { width: 50px; height: 50px; border: 4px solid #222; border-top: 4px solid #44aadd; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* --- GATEKEEPER --- */
         #gatekeeper {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle at center, #1a2a44 0%, #000 100%);
@@ -34,7 +32,6 @@
             border-radius: 5px; cursor: pointer; text-transform: uppercase; font-weight: bold; width: 100%;
         }
 
-        /* --- UI OVERLAYS --- */
         #side-ui { 
             position: absolute; top: 20px; left: 20px; 
             display: flex; flex-direction: column; gap: 15px;
@@ -64,7 +61,6 @@
         .close-btn { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 24px; color: #556677; transition: color 0.2s; line-height: 1; }
         .close-btn:hover { color: #fff; }
 
-        /* --- QUIZ UI --- */
         #quiz-overlay {
             position: absolute; top: 20px; right: 20px; width: 280px;
             background: rgba(10, 20, 35, 0.95); border: 2px solid #ffaa00;
@@ -74,7 +70,6 @@
         #quiz-feedback { font-weight: bold; min-height: 25px; margin-bottom: 10px; font-size: 14px; }
         #quiz-score { font-weight: bold; color: #44aadd; border-top: 1px solid #333; padding-top: 10px; margin-top: 10px; }
 
-        /* --- RESULTS SCREEN --- */
         #results-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center;
@@ -158,9 +153,8 @@
         let planets = [];
         let isQuizMode = false, quizQueue = [], quizIndex = 0, score = 0, quizTarget = null, isWaiting = false;
 
-        // --- SMART TOUCH VARIABLES ---
-        let touchStartX = 0;
-        let touchStartY = 0;
+        // Mobile touch variables
+        let touchStartX = 0, touchStartY = 0;
 
         window.addEventListener('load', () => {
             setTimeout(() => {
@@ -169,7 +163,6 @@
             }, 500);
         });
 
-        // --- SECURE PASSWORD CHECK ---
         function checkCode() {
             if(btoa(document.getElementById('activation-code').value.toUpperCase()) === "TkdWLTIwMjU=") {
                 document.getElementById('gatekeeper').style.display = 'none';
@@ -255,16 +248,14 @@
             mouse = new THREE.Vector2();
 
             window.addEventListener('resize', onWindowResize, false);
+            
+            // --- HYBRID INPUT SYSTEM ---
+            // 1. Desktop (Mouse) - Reliable standard click
+            window.addEventListener('click', onMouseClick, false);
 
-            // --- SMART TOUCH LISTENERS ---
-            // 1. Record where touch started
-            renderer.domElement.addEventListener('pointerdown', function(e) {
-                touchStartX = e.clientX;
-                touchStartY = e.clientY;
-            }, false);
-
-            // 2. Check where touch ended (Touch vs Drag)
-            renderer.domElement.addEventListener('pointerup', onPointerClick, false);
+            // 2. Mobile (Touch) - Custom handler to separate tap from drag
+            renderer.domElement.addEventListener('touchstart', onTouchStart, false);
+            renderer.domElement.addEventListener('touchend', onTouchEnd, false);
             
             animate();
         }
@@ -333,21 +324,40 @@
 
         function resetCamera() { controls.target.set(0, 0, 0); camera.position.set(0, 100, 250); closePopup(); }
 
-        // --- NEW POINTER CLICK HANDLER ---
-        function onPointerClick(event) {
-            // Ignore if clicking UI
-            if (event.target.closest('#side-ui') || event.target.closest('#info-card') || event.target.closest('#quiz-overlay') || event.target.closest('#results-screen')) return;
-            
-            // SMART CHECK: Did the finger move?
-            // If moved more than 5 pixels, it's a drag (rotate), NOT a click.
-            const diffX = Math.abs(event.clientX - touchStartX);
-            const diffY = Math.abs(event.clientY - touchStartY);
-            if (diffX > 5 || diffY > 5) return; // Stop here if it was a drag
+        // --- INTERACTION LOGIC ---
 
-            if (isWaiting) return;
+        function onTouchStart(e) {
+            touchStartX = e.changedTouches[0].clientX;
+            touchStartY = e.changedTouches[0].clientY;
+        }
+
+        function onTouchEnd(e) {
+            // Calculate distance moved
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            const dy = e.changedTouches[0].clientY - touchStartY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            // If moved less than 20px, treat as TAP
+            if (dist < 20) {
+                e.preventDefault(); // Stop mouse click firing
+                checkIntersection(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+            }
+        }
+
+        function onMouseClick(e) {
+            // Standard click for desktop
+            checkIntersection(e.clientX, e.clientY);
+        }
+
+        function checkIntersection(x, y) {
+            // Ignore UI clicks
+            const el = document.elementFromPoint(x, y);
+            if (el && (el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen'))) return;
             
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1; 
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            if (isWaiting) return;
+
+            mouse.x = (x / window.innerWidth) * 2 - 1;
+            mouse.y = -(y / window.innerHeight) * 2 + 1;
             
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(planets);
