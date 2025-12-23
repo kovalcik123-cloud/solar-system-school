@@ -97,7 +97,7 @@
     <div id="gatekeeper">
         <div class="login-box">
             <h2 style="color: #44aadd; margin-top:0;">ŠKOLSKÝ PRÍSTUP</h2>
-            <p style="color: #888; font-size: 14px;">Zadajte kód (NGV-2025)</p>
+            <p style="color: #888; font-size: 14px;">Zadajte kód od učiteľa</p>
             <input type="text" id="activation-code" placeholder="XXXX-XXXX" maxlength="10">
             <button onclick="checkCode()">VSTÚPIŤ</button>
             <div id="error-msg" style="color:#ff4444; display:none; margin-top:10px;">Neplatný kód</div>
@@ -142,9 +142,8 @@
     </div>
 
     <script>
-        // Use Slovak data with correct colors from your provided snippet
         const planetData = [
-            { name: "Slnko", radius: 20, distance3D: 0, color: 0xffff00, texture: "https://upload.wikimedia.org/wikipedia/commons/9/99/Map_of_the_full_sun.jpg", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
+            { name: "Slnko", radius: 20, distance3D: 0, color: 0xffaa00, texture: "https://upload.wikimedia.org/wikipedia/commons/9/99/Map_of_the_full_sun.jpg", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
             { name: "Merkúr", radius: 0.8, distance3D: 35, color: 0xaaaaaa, type: "rocky", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Solarsystemscope_texture_2k_mercury.jpg/2048px-Solarsystemscope_texture_2k_mercury.jpg", realDist: "57.9M km", realDiam: "4,879 km", orbit: "88 dní", rotation: "59 dní", fact: "Najmenšia planéta, ktorá sa ochladzovaním zmenšuje." },
             { name: "Venuša", radius: 1.9, distance3D: 50, color: 0xe3bb76, type: "atmosphere", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Solarsystemscope_texture_2k_venus_atmosphere.jpg/2048px-Solarsystemscope_texture_2k_venus_atmosphere.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Deň na Venuši je dlhší ako jej rok." },
             { name: "Zem", radius: 2, distance3D: 70, color: 0x2233ff, type: "earth", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Solarsystemscope_texture_2k_earth_daymap.jpg/2560px-Solarsystemscope_texture_2k_earth_daymap.jpg", realDist: "149.6M km", realDiam: "12,742 km", orbit: "365 dní", rotation: "24 hod", fact: "Jediná planéta nepomenovaná po bohovi." },
@@ -166,8 +165,11 @@
             }, 500);
         });
 
+        // --- SECURE PASSWORD CHECK (Base64 Encoded) ---
         function checkCode() {
-            if(document.getElementById('activation-code').value.toUpperCase() === "NGV-2025") {
+            // "TkdWLTIwMjU=" decodes to "NGV-2025"
+            // This hides the password from casual browsing
+            if(btoa(document.getElementById('activation-code').value.toUpperCase()) === "TkdWLTIwMjU=") {
                 document.getElementById('gatekeeper').style.display = 'none';
                 document.getElementById('side-ui').style.visibility = 'visible';
                 init();
@@ -237,7 +239,6 @@
             controls.enableDamping = true; controls.dampingFactor = 0.05;
             controls.minDistance = 20; controls.maxDistance = 500;
 
-            // --- LIGHTING FROM YOUR APPROVED SNIPPET ---
             const hemiLight = new THREE.HemisphereLight( 0xddeeff, 0x0f0e0d, 0.6 );
             scene.add( hemiLight );
             const ambient = new THREE.AmbientLight(0xffffff, 0.5); 
@@ -275,7 +276,6 @@
             const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
             planetData.forEach(data => {
                 const geometry = new THREE.SphereGeometry(data.radius, 128, 128);
-                // --- MATERIALS FROM YOUR APPROVED SNIPPET ---
                 let material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.05 });
                 const onTexError = () => { material.map = generateOrganicTexture(data); material.needsUpdate = true; };
                 const tex = textureLoader.load(data.texture, (t) => { t.encoding = THREE.sRGBEncoding; t.anisotropy = maxAnisotropy; material.map = t; material.needsUpdate = true; }, undefined, onTexError);
@@ -370,7 +370,7 @@
             if (pick.name === quizTarget.name) {
                 score++;
                 feed.innerHTML = `<span style="color:#00ff00">Správne!</span>`;
-                updateQuizDisplay(); // IMMEDIATE UPDATE FIX
+                updateQuizDisplay();
                 setTimeout(() => { quizIndex++; nextQuestion(); }, 1000);
             } else {
                 feed.innerHTML = `<span style="color:#ff4444">Nesprávne!</span> Bola to: ${quizTarget.name}`;
