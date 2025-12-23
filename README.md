@@ -12,7 +12,7 @@ Accurate Data: Planet sizes, distances (scaled), and orbital periods.
 
 Interactive Quiz: 8-question test with instant feedback and a final results certificate.
 
-Gatekeeper: Password protected access (Code: NGV-2025).
+Gatekeeper: Password protected access (Code provided by teacher).
 
 Touch & Mouse Support: Fully responsive for interactive whiteboards and tablets.
 
