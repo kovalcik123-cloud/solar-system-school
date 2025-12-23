@@ -158,6 +158,10 @@
         let planets = [];
         let isQuizMode = false, quizQueue = [], quizIndex = 0, score = 0, quizTarget = null, isWaiting = false;
 
+        // --- SMART TOUCH VARIABLES ---
+        let touchStartX = 0;
+        let touchStartY = 0;
+
         window.addEventListener('load', () => {
             setTimeout(() => {
                 const loader = document.getElementById('loader');
@@ -165,10 +169,8 @@
             }, 500);
         });
 
-        // --- SECURE PASSWORD CHECK (Base64 Encoded) ---
+        // --- SECURE PASSWORD CHECK ---
         function checkCode() {
-            // "TkdWLTIwMjU=" decodes to "NGV-2025"
-            // This hides the password from casual browsing
             if(btoa(document.getElementById('activation-code').value.toUpperCase()) === "TkdWLTIwMjU=") {
                 document.getElementById('gatekeeper').style.display = 'none';
                 document.getElementById('side-ui').style.visibility = 'visible';
@@ -253,7 +255,17 @@
             mouse = new THREE.Vector2();
 
             window.addEventListener('resize', onWindowResize, false);
-            window.addEventListener('click', onMouseClick, false);
+
+            // --- SMART TOUCH LISTENERS ---
+            // 1. Record where touch started
+            renderer.domElement.addEventListener('pointerdown', function(e) {
+                touchStartX = e.clientX;
+                touchStartY = e.clientY;
+            }, false);
+
+            // 2. Check where touch ended (Touch vs Drag)
+            renderer.domElement.addEventListener('pointerup', onPointerClick, false);
+            
             animate();
         }
 
@@ -321,12 +333,25 @@
 
         function resetCamera() { controls.target.set(0, 0, 0); camera.position.set(0, 100, 250); closePopup(); }
 
-        function onMouseClick(event) {
+        // --- NEW POINTER CLICK HANDLER ---
+        function onPointerClick(event) {
+            // Ignore if clicking UI
             if (event.target.closest('#side-ui') || event.target.closest('#info-card') || event.target.closest('#quiz-overlay') || event.target.closest('#results-screen')) return;
+            
+            // SMART CHECK: Did the finger move?
+            // If moved more than 5 pixels, it's a drag (rotate), NOT a click.
+            const diffX = Math.abs(event.clientX - touchStartX);
+            const diffY = Math.abs(event.clientY - touchStartY);
+            if (diffX > 5 || diffY > 5) return; // Stop here if it was a drag
+
             if (isWaiting) return;
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1; mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1; 
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(planets);
+            
             if (intersects.length > 0) {
                 const target = intersects[0].object;
                 if (isQuizMode) handleQuizPick(target.userData);
@@ -346,7 +371,6 @@
 
         function closePopup() { document.getElementById('info-card').style.display = 'none'; }
 
-        // --- QUIZ LOGIC (FIXED) ---
         function startQuiz() {
             isQuizMode = true; score = 0; quizIndex = 0;
             quizQueue = planetData.filter(p => p.name !== "Slnko").sort(() => Math.random() - 0.5);
