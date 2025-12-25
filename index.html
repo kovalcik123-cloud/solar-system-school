@@ -178,9 +178,9 @@
     </div>
 
     <script>
-        // Use versioning '?v=3' to force cache refresh again
+        // Use versioning '?v=4'
         const planetData = [
-            { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg?v=3", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
+            { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg?v=4", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
             { name: "Merkúr", radius: 0.8, distance3D: 35, speed: 0.015, color: 0xaaaaaa, type: "rocky", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Solarsystemscope_texture_2k_mercury.jpg/2048px-Solarsystemscope_texture_2k_mercury.jpg", realDist: "57.9M km", realDiam: "4,879 km", orbit: "88 dní", rotation: "59 dní", fact: "Najmenšia planéta, ktorá sa ochladzovaním zmenšuje." },
             { name: "Venuša", radius: 1.9, distance3D: 50, speed: 0.012, color: 0xe3bb76, type: "atmosphere", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Solarsystemscope_texture_2k_venus_atmosphere.jpg/2048px-Solarsystemscope_texture_2k_venus_atmosphere.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Deň na Venuši je dlhší ako jej rok." },
             { name: "Zem", radius: 2, distance3D: 70, speed: 0.010, color: 0x2233ff, type: "earth", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Solarsystemscope_texture_2k_earth_daymap.jpg/2560px-Solarsystemscope_texture_2k_earth_daymap.jpg", realDist: "149.6M km", realDiam: "12,742 km", orbit: "365 dní", rotation: "24 hod", fact: "Jediná planéta nepomenovaná po bohovi." },
@@ -204,7 +204,6 @@
             }, 500);
         });
 
-        // --- TRI-KEY SECURITY ---
         function checkCode() {
             const inputHash = btoa(document.getElementById('activation-code').value.toUpperCase());
             if(inputHash === "TkdWLTIwMjU=" || inputHash === "UkFBQkU=" || inputHash === "VEFLVElL") {
@@ -264,7 +263,8 @@
             scene.background = new THREE.Color(0x000005);
             scene.fog = new THREE.FogExp2(0x000005, 0.002);
 
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+            // UPDATED CAMERA FAR PLANE TO 10,000 to see the galaxy sphere at 5000
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
             camera.position.set(0, 100, 250);
 
             try { renderer = new THREE.WebGLRenderer({ antialias: true }); } 
