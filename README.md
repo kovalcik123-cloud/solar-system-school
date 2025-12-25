@@ -19,6 +19,7 @@ Touch & Mouse Support: Fully responsive for interactive whiteboards and tablets.
 How to Run
 
 Open the Live Demo.
+https://kovalcik123-cloud.github.io/solar-system-school/
 
 Enter the class access code.
 
