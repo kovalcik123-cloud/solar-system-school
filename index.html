@@ -13,6 +13,13 @@
         .spinner { width: 50px; height: 50px; border: 4px solid #222; border-top: 4px solid #44aadd; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+        /* --- DEBUG MSG --- */
+        #debug-msg {
+            position: fixed; bottom: 10px; right: 10px; 
+            color: #666; font-size: 10px; z-index: 3000;
+            pointer-events: none; opacity: 0.7;
+        }
+
         /* --- GATEKEEPER --- */
         #gatekeeper {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -118,6 +125,7 @@
 <body>
 
     <div id="loader"><div class="spinner"></div></div>
+    <div id="debug-msg">Inicializácia...</div>
 
     <div id="gatekeeper">
         <div class="login-box">
@@ -170,9 +178,9 @@
     </div>
 
     <script>
-        // SUN uses "sun.jpg". Others use standard URLs.
+        // Use versioning '?v=2' to force cache refresh
         const planetData = [
-            { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
+            { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg?v=2", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
             { name: "Merkúr", radius: 0.8, distance3D: 35, speed: 0.015, color: 0xaaaaaa, type: "rocky", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Solarsystemscope_texture_2k_mercury.jpg/2048px-Solarsystemscope_texture_2k_mercury.jpg", realDist: "57.9M km", realDiam: "4,879 km", orbit: "88 dní", rotation: "59 dní", fact: "Najmenšia planéta, ktorá sa ochladzovaním zmenšuje." },
             { name: "Venuša", radius: 1.9, distance3D: 50, speed: 0.012, color: 0xe3bb76, type: "atmosphere", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Solarsystemscope_texture_2k_venus_atmosphere.jpg/2048px-Solarsystemscope_texture_2k_venus_atmosphere.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Deň na Venuši je dlhší ako jej rok." },
             { name: "Zem", radius: 2, distance3D: 70, speed: 0.010, color: 0x2233ff, type: "earth", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Solarsystemscope_texture_2k_earth_daymap.jpg/2560px-Solarsystemscope_texture_2k_earth_daymap.jpg", realDist: "149.6M km", realDiam: "12,742 km", orbit: "365 dní", rotation: "24 hod", fact: "Jediná planéta nepomenovaná po bohovi." },
@@ -196,7 +204,6 @@
             }, 500);
         });
 
-        // --- TRI-KEY SECURITY ---
         function checkCode() {
             const inputHash = btoa(document.getElementById('activation-code').value.toUpperCase());
             if(inputHash === "TkdWLTIwMjU=" || inputHash === "UkFBQkU=" || inputHash === "VEFLVElL") {
@@ -277,7 +284,7 @@
             const sunLight = new THREE.PointLight(0xffffff, 2.0, 0);
             scene.add(sunLight);
 
-            createUniverse(); // 1. Dots first (safe), 2. Image later (HD)
+            createUniverse(); 
             createSolarSystem();
             populateNav(); 
 
@@ -316,9 +323,8 @@
             }
         }
 
-        // --- HYBRID UNIVERSE LOADER (No more black screens) ---
         function createUniverse() {
-            // STEP 1: CREATE THE "SAFE" STARS IMMEDIATELY
+            // STEP 1: Always Safe Stars first
             const geometry = new THREE.BufferGeometry();
             const vertices = [];
             for (let i = 0; i < 4000; i++) vertices.push(THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000));
@@ -330,32 +336,32 @@
             gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.5)'); gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
             ctx.fillStyle = gradient; ctx.fillRect(0, 0, 32, 32);
             
-            const starMaterial = new THREE.PointsMaterial({ 
-                color: 0xffffff, 
-                size: 3.5, 
-                map: new THREE.CanvasTexture(canvas), 
-                transparent: true, 
-                blending: THREE.AdditiveBlending, 
-                depthWrite: false, 
-                opacity: 0.8 
-            });
+            const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 3.5, map: new THREE.CanvasTexture(canvas), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 });
             const stars = new THREE.Points(geometry, starMaterial);
-            scene.add(stars); // Safe stars are ON.
+            scene.add(stars);
 
-            // STEP 2: TRY TO LOAD THE HD TEXTURE (BEHIND THE STARS)
+            // STEP 2: Try Cache-Busted Load
+            const debug = document.getElementById('debug-msg');
             const textureLoader = new THREE.TextureLoader();
             
-            // Try 'stars.jpg' first. If that fails, user might have 'Stars.jpg'.
+            // Use date to force fresh load
+            const cacheBuster = `?v=${new Date().getTime()}`;
+            
             textureLoader.load(
-                'stars.jpg', 
+                'stars.jpg' + cacheBuster, 
                 function(texture) {
+                    debug.innerText = "Pozadie načítané (HD)";
+                    debug.style.color = "#00ff00";
                     addGalaxySphere(texture);
                 },
                 undefined,
                 function(err) {
-                    console.log("stars.jpg failed. Trying Stars.jpg...");
-                    textureLoader.load('Stars.jpg', function(texture){
-                         addGalaxySphere(texture);
+                    debug.innerText = "Chyba pozadia (stars.jpg)";
+                    debug.style.color = "#ff4444";
+                    // Try alternative casing just in case
+                    textureLoader.load('Stars.jpg' + cacheBuster, function(t){
+                         debug.innerText = "Pozadie načítané (Stars.jpg)";
+                         addGalaxySphere(t);
                     });
                 }
             );
@@ -367,7 +373,7 @@
                 map: texture, 
                 side: THREE.BackSide,
                 transparent: true,
-                opacity: 0.6 // Slightly transparent so we see white dots + galaxy
+                opacity: 0.6
             });
             const starSphere = new THREE.Mesh(geometry, material);
             scene.add(starSphere);
