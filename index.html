@@ -178,14 +178,20 @@
     </div>
 
     <script>
-        // Use versioning '?v=4'
+        // TEST MODE: 
+        // 1. Jupiter looks for "jupiter.jpg"
+        // 2. Universe stars look for "sun.jpg" (To prove if code works. If background is Orange = Code Good).
+        
         const planetData = [
-            { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg?v=4", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
+            { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg?v=5", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
             { name: "Merkúr", radius: 0.8, distance3D: 35, speed: 0.015, color: 0xaaaaaa, type: "rocky", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Solarsystemscope_texture_2k_mercury.jpg/2048px-Solarsystemscope_texture_2k_mercury.jpg", realDist: "57.9M km", realDiam: "4,879 km", orbit: "88 dní", rotation: "59 dní", fact: "Najmenšia planéta, ktorá sa ochladzovaním zmenšuje." },
             { name: "Venuša", radius: 1.9, distance3D: 50, speed: 0.012, color: 0xe3bb76, type: "atmosphere", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Solarsystemscope_texture_2k_venus_atmosphere.jpg/2048px-Solarsystemscope_texture_2k_venus_atmosphere.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Deň na Venuši je dlhší ako jej rok." },
             { name: "Zem", radius: 2, distance3D: 70, speed: 0.010, color: 0x2233ff, type: "earth", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Solarsystemscope_texture_2k_earth_daymap.jpg/2560px-Solarsystemscope_texture_2k_earth_daymap.jpg", realDist: "149.6M km", realDiam: "12,742 km", orbit: "365 dní", rotation: "24 hod", fact: "Jediná planéta nepomenovaná po bohovi." },
             { name: "Mars", radius: 1.1, distance3D: 90, speed: 0.008, color: 0xdd4422, type: "rocky", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Solarsystemscope_texture_2k_mars.jpg/2048px-Solarsystemscope_texture_2k_mars.jpg", realDist: "227.9M km", realDiam: "6,779 km", orbit: "687 dní", rotation: "24.6 hod", fact: "Domov najvyššej sopky Olympus Mons." },
-            { name: "Jupiter", radius: 10, distance3D: 130, speed: 0.005, color: 0xd8ca9d, type: "gas", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Solarsystemscope_texture_2k_jupiter.jpg/2048px-Solarsystemscope_texture_2k_jupiter.jpg", realDist: "778.5M km", realDiam: "139,820 km", orbit: "11.9 r", rotation: "9.9 hod", fact: "Najväčšia planéta s obrovskou búrkou." },
+            
+            // JUPITER: Changed to local file "jupiter.jpg" for testing
+            { name: "Jupiter", radius: 10, distance3D: 130, speed: 0.005, color: 0xd8ca9d, type: "gas", texture: "jupiter.jpg?v=1", realDist: "778.5M km", realDiam: "139,820 km", orbit: "11.9 r", rotation: "9.9 hod", fact: "Najväčšia planéta s obrovskou búrkou." },
+            
             { name: "Saturn", radius: 8.5, distance3D: 180, speed: 0.004, color: 0xcfae76, hasRings: true, type: "gas", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Solarsystemscope_texture_2k_saturn.jpg/2048px-Solarsystemscope_texture_2k_saturn.jpg", realDist: "1.4B km", realDiam: "116,460 km", orbit: "29.5 r", rotation: "10.7 hod", fact: "Prstence sú tvorené prevažne ľadom." },
             { name: "Urán", radius: 4, distance3D: 220, speed: 0.003, color: 0xadd8e6, type: "gas", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Solarsystemscope_texture_2k_uranus.jpg/2048px-Solarsystemscope_texture_2k_uranus.jpg", realDist: "2.9B km", realDiam: "50,724 km", orbit: "84 r", rotation: "17.2 hod", fact: "Rotuje takmer vodorovne." },
             { name: "Neptún", radius: 3.9, distance3D: 260, speed: 0.002, color: 0x3344ff, type: "gas", texture: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Solarsystemscope_texture_2k_neptune.jpg/2048px-Solarsystemscope_texture_2k_neptune.jpg", realDist: "4.5B km", realDiam: "49,244 km", orbit: "165 r", rotation: "16.1 hod", fact: "Najvzdialenejšia planéta od Slnka." }
@@ -263,7 +269,6 @@
             scene.background = new THREE.Color(0x000005);
             scene.fog = new THREE.FogExp2(0x000005, 0.002);
 
-            // UPDATED CAMERA FAR PLANE TO 10,000 to see the galaxy sphere at 5000
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
             camera.position.set(0, 100, 250);
 
@@ -325,7 +330,6 @@
         }
 
         function createUniverse() {
-            // STEP 1: Always Safe Stars first
             const geometry = new THREE.BufferGeometry();
             const vertices = [];
             for (let i = 0; i < 4000; i++) vertices.push(THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000));
@@ -341,43 +345,34 @@
             const stars = new THREE.Points(geometry, starMaterial);
             scene.add(stars);
 
-            // STEP 2: Try Cache-Busted Load
+            // DEBUG TEST: Using "sun.jpg" (PROVEN WORKING) as the background texture
+            // If background is ORANGE, then Code = Good, stars.jpg = Bad.
             const debug = document.getElementById('debug-msg');
             const textureLoader = new THREE.TextureLoader();
-            
-            // Use date to force fresh load
             const cacheBuster = `?v=${new Date().getTime()}`;
             
             textureLoader.load(
-                'stars.jpg' + cacheBuster, 
+                'sun.jpg' + cacheBuster,  // <--- TEST FILE
                 function(texture) {
-                    texture.encoding = THREE.sRGBEncoding; // FORCE CORRECT COLOR SPACE
-                    debug.innerText = "Pozadie načítané (HD)";
-                    debug.style.color = "#00ff00";
+                    texture.encoding = THREE.sRGBEncoding;
+                    debug.innerText = "TEST: Background is SUN (Code works)";
+                    debug.style.color = "#ffaa00";
                     addGalaxySphere(texture);
                 },
                 undefined,
                 function(err) {
-                    debug.innerText = "Chyba pozadia (stars.jpg)";
+                    debug.innerText = "Error loading sun.jpg as background";
                     debug.style.color = "#ff4444";
-                    // Try alternative casing just in case
-                    textureLoader.load('Stars.jpg' + cacheBuster, function(t){
-                         t.encoding = THREE.sRGBEncoding;
-                         debug.innerText = "Pozadie načítané (Stars.jpg)";
-                         addGalaxySphere(t);
-                    });
                 }
             );
         }
 
         function addGalaxySphere(texture) {
-            // HUGE SPHERE to cover everything, NO transparency
             const geometry = new THREE.SphereGeometry(5000, 60, 40);
             const material = new THREE.MeshBasicMaterial({ 
                 map: texture, 
                 side: THREE.BackSide,
-                // Removed transparent: true and opacity: 0.6
-                depthWrite: false // Ensures it renders behind everything else
+                depthWrite: false
             });
             const starSphere = new THREE.Mesh(geometry, material);
             scene.add(starSphere);
@@ -386,11 +381,27 @@
         function createSolarSystem() {
             const textureLoader = new THREE.TextureLoader();
             const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+            const debug = document.getElementById('debug-msg');
+
             planetData.forEach(data => {
                 const geometry = new THREE.SphereGeometry(data.radius, 128, 128);
                 let material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.05 });
-                const onTexError = () => { material.map = generateOrganicTexture(data); material.needsUpdate = true; };
-                const tex = textureLoader.load(data.texture, (t) => { t.encoding = THREE.sRGBEncoding; t.anisotropy = maxAnisotropy; material.map = t; material.needsUpdate = true; }, undefined, onTexError);
+                const onTexError = () => { 
+                    material.map = generateOrganicTexture(data); 
+                    material.needsUpdate = true; 
+                    if(data.name === "Jupiter") debug.innerText += " | Jupiter FAILED";
+                };
+                
+                // Jupiter gets specific logging
+                const tex = textureLoader.load(data.texture, (t) => { 
+                    t.encoding = THREE.sRGBEncoding; 
+                    t.anisotropy = maxAnisotropy; 
+                    material.map = t; 
+                    material.needsUpdate = true;
+                    if(data.name === "Jupiter") {
+                        debug.innerText += " | Jupiter OK";
+                    }
+                }, undefined, onTexError);
                 
                 if (data.name === "Slnko") { material = new THREE.MeshBasicMaterial({ color: 0xffffff, map: tex }); }
 
