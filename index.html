@@ -122,7 +122,7 @@
     <div id="gatekeeper">
         <div class="login-box">
             <h2 style="color: #44aadd; margin-top:0;">ŠKOLSKÝ PRÍSTUP</h2>
-            <p style="color: #888; font-size: 14px;">Zadajte kód od učiteľa</p>
+            <p style="color: #888; font-size: 14px;">Zadajte kód</p>
             <input type="text" id="activation-code" placeholder="XXXX-XXXX" maxlength="10">
             <button onclick="checkCode()">VSTÚPIŤ</button>
             <div id="error-msg" style="color:#ff4444; display:none; margin-top:10px;">Neplatný kód</div>
@@ -177,7 +177,7 @@
         const planetData = [
             { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
             { name: "Merkúr", radius: 0.8, distance3D: 35, speed: 0.015, color: 0xaaaaaa, type: "rocky", texture: "mercury.jpg", realDist: "57.9M km", realDiam: "4,879 km", orbit: "88 dní", rotation: "59 dní", fact: "Najmenšia planéta, ktorá sa ochladzovaním zmenšuje." },
-            { name: "Venuša", radius: 1.9, distance3D: 50, speed: 0.012, color: 0xe3bb76, type: "atmosphere", texture: "venus.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Deň na Venuši je dlhší ako jej rok." },
+            { name: "Venuša", radius: 1.9, distance3D: 50, speed: 0.012, color: 0xe3bb76, type: "atmosphere", texture: "venus.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Jej deň je dlhší ako jej rok." },
             { name: "Zem", radius: 2, distance3D: 70, speed: 0.010, color: 0x2233ff, type: "earth", texture: "earth.jpg", realDist: "149.6M km", realDiam: "12,742 km", orbit: "365 dní", rotation: "24 hod", fact: "Jediná planéta nepomenovaná po bohovi." },
             { name: "Mars", radius: 1.1, distance3D: 90, speed: 0.008, color: 0xdd4422, type: "rocky", texture: "mars.jpg", realDist: "227.9M km", realDiam: "6,779 km", orbit: "687 dní", rotation: "24.6 hod", fact: "Domov najvyššej sopky Olympus Mons." },
             { name: "Jupiter", radius: 10, distance3D: 130, speed: 0.005, color: 0xd8ca9d, type: "gas", texture: "jupiter.jpg", realDist: "778.5M km", realDiam: "139,820 km", orbit: "11.9 r", rotation: "9.9 hod", fact: "Najväčšia planéta s obrovskou búrkou." },
@@ -253,13 +253,39 @@
             return new THREE.CanvasTexture(canvas);
         }
 
+        function createSunGlow() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            // Center is bright white/yellow, fades to transparent
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
+            gradient.addColorStop(0.2, 'rgba(255, 200, 50, 0.6)'); 
+            gradient.addColorStop(0.5, 'rgba(255, 150, 0, 0.2)'); 
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0,0,64,64);
+            
+            const spriteMaterial = new THREE.SpriteMaterial({ 
+                map: new THREE.CanvasTexture(canvas), 
+                color: 0xffaa00, 
+                transparent: true, 
+                blending: THREE.AdditiveBlending,
+                depthWrite: false // Don't block other objects
+            });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            // Sun radius is 20, so we make this much larger (e.g. 100 or 120)
+            sprite.scale.set(130, 130, 1); 
+            return sprite;
+        }
+
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000005);
-            // FOG ACTIVE
-            scene.fog = new THREE.FogExp2(0x000005, 0.002);
+            // LIGHTER FOG (0.0012) - makes distant objects brighter
+            scene.fog = new THREE.FogExp2(0x000005, 0.0012);
 
-            // CAMERA FAR PLANE = 10000
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
             camera.position.set(0, 100, 250);
 
@@ -276,10 +302,18 @@
 
             const hemiLight = new THREE.HemisphereLight( 0xddeeff, 0x0f0e0d, 0.6 );
             scene.add( hemiLight );
-            const ambient = new THREE.AmbientLight(0xffffff, 0.5); 
+            
+            // BRIGHTER AMBIENT LIGHT (0.7) - lifts shadows
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7); 
             scene.add(ambient);
-            const sunLight = new THREE.PointLight(0xffffff, 2.0, 0);
+            
+            // BRIGHTER SUN POINT LIGHT (3.5) - makes planets shine
+            const sunLight = new THREE.PointLight(0xffffff, 3.5, 0);
             scene.add(sunLight);
+
+            // ADD SUN GLOW
+            const glow = createSunGlow();
+            scene.add(glow);
 
             createUniverse(); 
             createSolarSystem();
@@ -321,7 +355,6 @@
         }
 
         function createUniverse() {
-            // STEP 1: Safe Stars
             const geometry = new THREE.BufferGeometry();
             const vertices = [];
             for (let i = 0; i < 4000; i++) vertices.push(THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000));
@@ -337,9 +370,7 @@
             const stars = new THREE.Points(geometry, starMaterial);
             scene.add(stars);
 
-            // STEP 2: Stars.jpg with FOG FIX
             const textureLoader = new THREE.TextureLoader();
-            // Removed cache busting for production cleanliness
             
             textureLoader.load(
                 'stars.jpg',  
@@ -349,7 +380,6 @@
                 },
                 undefined,
                 function(err) {
-                    // Try case sensitive fallback
                      textureLoader.load('Stars.jpg', function(t){
                          t.encoding = THREE.sRGBEncoding;
                          addGalaxySphere(t);
@@ -364,7 +394,7 @@
                 map: texture, 
                 side: THREE.BackSide,
                 depthWrite: false,
-                fog: false // KEEPS IT VISIBLE
+                fog: false 
             });
             const starSphere = new THREE.Mesh(geometry, material);
             scene.add(starSphere);
