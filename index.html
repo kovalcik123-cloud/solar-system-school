@@ -2,7 +2,8 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- ADDED viewport-fit=cover to force full screen on iPhone -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Slnečná Sústava 3D (Školská Edícia)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; touch-action: none; }
@@ -34,33 +35,45 @@
             border-radius: 5px; cursor: pointer; text-transform: uppercase; font-weight: bold; width: 100%;
         }
 
-        /* --- PLANET NAVIGATION BAR --- */
+        /* --- PLANET NAVIGATION BAR (iPhone Optimized) --- */
         #planet-nav {
-            position: absolute; top: 0; left: 0; right: 0; 
-            height: calc(60px + env(safe-area-inset-top)); 
-            padding-top: env(safe-area-inset-top);
-            background: rgba(0,0,0,0.85); display: flex; align-items: center;
-            overflow-x: auto; white-space: nowrap; z-index: 2000;
-            padding-left: 10px; padding-right: 10px; border-bottom: 1px solid #44aadd;
+            position: fixed; /* Changed to fixed to stick to glass */
+            top: 0; left: 0; right: 0; 
+            
+            /* Logic: Use the safe area (notch), OR default to 15px if unknown */
+            height: calc(50px + max(15px, env(safe-area-inset-top))); 
+            padding-top: max(15px, env(safe-area-inset-top));
+            
+            background: rgba(0,0,0,0.9); /* Slightly darker for visibility */
+            border-bottom: 1px solid #44aadd;
+            
+            display: flex; align-items: center;
+            overflow-x: auto; white-space: nowrap; 
+            
+            z-index: 9999; /* Highest priority */
+            
+            padding-left: 10px; padding-right: 10px; 
             -ms-overflow-style: none; scrollbar-width: none;
             -webkit-overflow-scrolling: touch; touch-action: pan-x;
         }
         #planet-nav::-webkit-scrollbar { display: none; }
         
         .nav-item {
-            display: inline-block; padding: 8px 16px; margin: 0 6px;
-            border: 1px solid #44aadd; border-radius: 20px;
+            display: inline-block; padding: 6px 14px; margin: 0 5px;
+            border: 1px solid #44aadd; border-radius: 15px;
             color: #44aadd; background: rgba(68, 170, 221, 0.1);
-            cursor: pointer; font-size: 13px; font-weight: bold;
+            cursor: pointer; font-size: 12px; font-weight: bold;
             text-transform: uppercase; flex-shrink: 0;
             transition: all 0.2s;
-            margin-top: auto; margin-bottom: auto;
+            margin-top: auto; margin-bottom: 10px; /* Center vert in available space */
         }
         .nav-item:active, .nav-item:hover { background: #44aadd; color: white; transform: scale(1.05); }
 
         /* --- UI OVERLAYS --- */
         #side-ui { 
-            position: absolute; top: 100px;
+            position: absolute; 
+            /* Push down to avoid colliding with Nav Bar on mobile */
+            top: calc(80px + env(safe-area-inset-top)); 
             left: 20px; 
             display: flex; flex-direction: column; gap: 15px;
             pointer-events: none; z-index: 10; visibility: hidden;
@@ -129,6 +142,7 @@
         </div>
     </div>
 
+    <!-- Ensure display is none initially -->
     <div id="planet-nav" style="display:none;"></div>
 
     <div id="canvas-container"></div>
@@ -204,7 +218,11 @@
             if(inputHash === "TkdWLTIwMjU=" || inputHash === "UkFBQkU=" || inputHash === "VEFLVElL") {
                 document.getElementById('gatekeeper').style.display = 'none';
                 document.getElementById('side-ui').style.visibility = 'visible';
-                document.getElementById('planet-nav').style.display = 'flex';
+                
+                // FORCE FLEX DISPLAY
+                const nav = document.getElementById('planet-nav');
+                nav.style.display = 'flex';
+                
                 init();
             } else { document.getElementById('error-msg').style.display = 'block'; }
         }
@@ -258,24 +276,16 @@
             canvas.width = 64; canvas.height = 64;
             const ctx = canvas.getContext('2d');
             const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            // Center is bright white/yellow, fades to transparent
             gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
             gradient.addColorStop(0.2, 'rgba(255, 200, 50, 0.6)'); 
             gradient.addColorStop(0.5, 'rgba(255, 150, 0, 0.2)'); 
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0,0,64,64);
-            
+            ctx.fillStyle = gradient; ctx.fillRect(0,0,64,64);
             const spriteMaterial = new THREE.SpriteMaterial({ 
                 map: new THREE.CanvasTexture(canvas), 
-                color: 0xffaa00, 
-                transparent: true, 
-                blending: THREE.AdditiveBlending,
-                depthWrite: false // Don't block other objects
+                color: 0xffaa00, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false 
             });
             const sprite = new THREE.Sprite(spriteMaterial);
-            // Sun radius is 20, so we make this much larger (e.g. 100 or 120)
             sprite.scale.set(130, 130, 1); 
             return sprite;
         }
@@ -283,8 +293,7 @@
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000005);
-            // LIGHTER FOG (0.0012) - makes distant objects brighter
-            scene.fog = new THREE.FogExp2(0x000005, 0.0012);
+            scene.fog = new THREE.FogExp2(0x000005, 0.0012); // Lighter fog
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
             camera.position.set(0, 100, 250);
@@ -303,15 +312,12 @@
             const hemiLight = new THREE.HemisphereLight( 0xddeeff, 0x0f0e0d, 0.6 );
             scene.add( hemiLight );
             
-            // BRIGHTER AMBIENT LIGHT (0.7) - lifts shadows
             const ambient = new THREE.AmbientLight(0xffffff, 0.7); 
             scene.add(ambient);
             
-            // BRIGHTER SUN POINT LIGHT (3.5) - makes planets shine
             const sunLight = new THREE.PointLight(0xffffff, 3.5, 0);
             scene.add(sunLight);
 
-            // ADD SUN GLOW
             const glow = createSunGlow();
             scene.add(glow);
 
