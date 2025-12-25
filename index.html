@@ -196,11 +196,14 @@
             }, 500);
         });
 
-        // --- DUAL KEY SECURITY ---
+        // --- TRI-KEY SECURITY (FIXED HASH) ---
         function checkCode() {
             const inputHash = btoa(document.getElementById('activation-code').value.toUpperCase());
-            // "TkdWLTIwMjU=" = NGV-2025, "UkFBQkU=" = RAABE
-            if(inputHash === "TkdWLTIwMjU=" || inputHash === "UkFBQkU=") {
+            // "TkdWLTIwMjU=" = NGV-2025
+            // "UkFBQkU="     = RAABE
+            // "VEFLVElL"     = TAKTIK
+            
+            if(inputHash === "TkdWLTIwMjU=" || inputHash === "UkFBQkU=" || inputHash === "VEFLVElL") {
                 document.getElementById('gatekeeper').style.display = 'none';
                 document.getElementById('side-ui').style.visibility = 'visible';
                 document.getElementById('planet-nav').style.display = 'flex'; // Show nav bar
@@ -522,3 +525,4 @@
     </script>
 </body>
 </html>
+
