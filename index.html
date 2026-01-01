@@ -2,667 +2,504 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Slnečná Sústava 3D (Školská Edícia)</title>
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; touch-action: none; }
-        #canvas-container { width: 100vw; height: 100vh; display: block; z-index: 1; }
-        
-        /* --- LOADER --- */
-        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; justify-content: center; align-items: center; z-index: 2000; transition: opacity 0.8s; }
-        .spinner { width: 50px; height: 50px; border: 4px solid #222; border-top: 4px solid #44aadd; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        /* --- GATEKEEPER --- */
-        #gatekeeper {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle at center, #1a2a44 0%, #000 100%);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 1500;
-        }
-        .login-box {
-            background: rgba(255, 255, 255, 0.05); padding: 40px; border-radius: 15px;
-            border: 1px solid rgba(68, 170, 221, 0.3); backdrop-filter: blur(10px);
-            text-align: center; width: 85%; max-width: 350px;
-        }
-        #gatekeeper input {
-            width: 80%; padding: 12px; margin: 20px 0; border-radius: 5px; border: 1px solid #333;
-            background: #000; color: #44aadd; text-align: center; font-size: 18px;
-        }
-        #gatekeeper button {
-            padding: 12px 30px; background: #44aadd; border: none; color: white;
-            border-radius: 5px; cursor: pointer; text-transform: uppercase; font-weight: bold; width: 100%;
-        }
-
-        /* --- PLANET NAVIGATION BAR --- */
-        #planet-nav {
-            position: fixed; 
-            top: 0; left: 0; right: 0; 
-            height: calc(60px + env(safe-area-inset-top)); 
-            padding-top: env(safe-area-inset-top);
-            background: rgba(0,0,0,0.85);
-            backdrop-filter: blur(5px);
-            border-bottom: 1px solid #44aadd;
-            display: flex; align-items: center;
-            overflow-x: auto; white-space: nowrap; 
-            z-index: 9999; 
-            padding-left: 10px; padding-right: 10px; 
-            -ms-overflow-style: none; scrollbar-width: none;
-            -webkit-overflow-scrolling: touch; touch-action: pan-x;
-        }
-        #planet-nav::-webkit-scrollbar { display: none; }
-        
-        .nav-item {
-            display: inline-block; padding: 6px 14px; margin: 0 5px;
-            border: 1px solid #44aadd; border-radius: 15px;
-            color: #44aadd; background: rgba(68, 170, 221, 0.1);
-            cursor: pointer; font-size: 12px; font-weight: bold;
-            text-transform: uppercase; flex-shrink: 0;
-            transition: all 0.2s;
-            margin-top: auto; margin-bottom: 15px; 
-        }
-        .nav-item:active, .nav-item:hover { background: #44aadd; color: white; transform: scale(1.05); }
-
-        /* --- UI OVERLAYS --- */
-        #side-ui { 
-            position: absolute; 
-            top: 160px; 
-            left: 20px; 
-            display: flex; flex-direction: column; gap: 15px;
-            pointer-events: none; z-index: 10; visibility: hidden;
-            text-shadow: 0 0 10px rgba(0,0,0,0.8);
-        }
-        h1 { margin: 0; font-weight: 300; letter-spacing: 2px; font-size: 24px; color: #fff; }
-        .subtitle { margin: 5px 0 0 0; font-size: 14px; color: #aaa; max-width: 300px; line-height: 1.4; }
-
-        .button-group { pointer-events: auto; display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
-        .menu-btn { 
-            background: rgba(68, 170, 221, 0.15); border: 1px solid #44aadd; color: #44aadd; 
-            padding: 10px 18px; border-radius: 4px; cursor: pointer; text-align: left;
-            text-transform: uppercase; letter-spacing: 1px; font-size: 11px; width: fit-content;
-        }
-        .menu-btn:hover { background: rgba(68, 170, 221, 0.8); color: white; }
-        
-        #pause-btn.active { background: rgba(255, 170, 0, 0.2); border-color: #ffaa00; color: #ffaa00; }
-
-        /* --- POPUP STYLES (Mobile Default: Centered) --- */
-        #quiz-overlay, #info-card {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 85%; max-width: 320px; background: rgba(10, 20, 35, 0.95); 
-            border-radius: 12px; padding: 25px; display: none; backdrop-filter: blur(10px); z-index: 100;
-        }
-        #quiz-overlay { border: 2px solid #ffaa00; z-index: 200; }
-        #info-card { border: 1px solid #44aadd; }
-        
-        #quiz-question, #quiz-feedback, #quiz-score { text-align: center; }
-        #quiz-question { font-size: 18px; margin-bottom: 20px; color: #fff; }
-        #quiz-score { color: #44aadd; border-top: 1px solid #333; padding-top: 15px; margin-top: 15px; }
-        
-        #info-card h2 { margin-top: 0; color: #44aadd; border-bottom: 1px solid #334455; padding-bottom: 10px; margin-bottom: 15px; font-weight: 400; }
-        .data-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px; }
-        .label { color: #8899aa; } .value { font-weight: bold; color: #fff; }
-        .fact-box { margin-top: 20px; padding: 12px; background: rgba(255, 255, 255, 0.05); border-left: 3px solid #44aadd; border-radius: 0 4px 4px 0; font-style: italic; font-size: 0.9rem; line-height: 1.5; color: #ddeeff; }
-        .close-btn { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 24px; color: #556677; transition: color 0.2s; line-height: 1; }
-
-        /* --- DESKTOP/LAPTOP OVERRIDE (Screens wider than 1024px) --- */
-        @media (min-width: 1024px) {
-            #quiz-overlay {
-                /* Reset center positioning */
-                top: auto; 
-                left: auto;
-                transform: none;
-                
-                /* Move to Top Right */
-                top: 100px;
-                right: 30px;
-                
-                /* Optional: Make it slightly wider on desktop */
-                width: 300px;
-            }
-        }
-
-        #results-screen {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center;
-            z-index: 1600;
-        }
-        .results-box {
-            background: #1a2a44; border: 2px solid #44aadd; padding: 40px; border-radius: 20px;
-            text-align: center; width: 80%; max-width: 400px;
-        }
-        .grade-text { font-size: 48px; font-weight: bold; color: #ffaa00; margin: 20px 0; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ProcessAI - Strategické AI poradenstvo a priemyselné simulácie pre automotive.">
+    <title>ProcessAI | Automotive & AI Strategy</title>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --card-bg: #1f2833;
+            --accent-primary: #66fcf1;
+            --accent-secondary: #45a29e;
+            --text-main: #c5c6c7;
+            --text-white: #ffffff;
+            --font-main: 'Inter', sans-serif;
+            --spacing-section: 90px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        a { text-decoration: none; color: inherit; transition: 0.3s ease; }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+        section { padding: var(--spacing-section) 0; }
+
+        nav {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 25px 0;
+            z-index: 10;
+        }
+        
+        .nav-content { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 1.6rem; font-weight: 700; color: var(--text-white); letter-spacing: -1px; }
+        .logo span { color: var(--accent-primary); }
+
+        header {
+            min-height: 85vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: radial-gradient(circle at 50% 50%, #1f2833 0%, #0b0c10 70%);
+            text-align: center;
+            padding-top: 80px;
+        }
+
+        .hero-content { z-index: 1; animation: fadeInUp 1.2s ease-out; }
+        .hero-title { font-size: 3.5rem; color: var(--text-white); margin-bottom: 1.5rem; letter-spacing: -2px; line-height: 1.1; }
+        .hero-title span { color: var(--accent-primary); }
+        .hero-subtitle { font-size: 1.25rem; color: var(--accent-secondary); margin-bottom: 2.5rem; font-weight: 300; max-width: 750px; margin: 0 auto 2.5rem auto; }
+
+        .cta-button {
+            display: inline-block;
+            padding: 16px 40px;
+            background-color: var(--accent-primary);
+            color: #0b0c10;
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9rem;
+            border: none;
+            cursor: pointer;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(102, 252, 241, 0.3);
+        }
+
+        .section-title { font-size: 2.2rem; color: var(--text-white); margin-bottom: 2.5rem; border-left: 5px solid var(--accent-primary); padding-left: 20px; }
+        .section-subtitle { color: #aab; margin-bottom: 40px; max-width: 700px; margin-top: -20px; }
+
+        .services-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; }
+        .service-card { background: rgba(31, 40, 51, 0.4); padding: 40px; border-radius: 8px; border-bottom: 2px solid transparent; transition: 0.3s; }
+        .service-card:hover { border-bottom-color: var(--accent-primary); background: rgba(31, 40, 51, 0.6); }
+        .service-title { color: var(--text-white); font-size: 1.25rem; margin-bottom: 15px; }
+
+        .about-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 70px; align-items: center; }
+        .badge { background: rgba(69, 162, 158, 0.15); color: var(--accent-primary); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; border: 1px solid rgba(102, 252, 241, 0.2); display: inline-block; margin: 5px; }
+
+        .portfolio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 30px; }
+        .project-card { background: var(--card-bg); border-radius: 12px; overflow: hidden; height: 100%; border: 1px solid rgba(255, 255, 255, 0.05); transition: 0.3s; }
+        .project-card:hover { transform: translateY(-10px); border-color: var(--accent-primary); }
+        
+        .card-visual { 
+            height: 200px; 
+            position: relative; 
+            overflow: hidden; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+        }
+        
+        .visual-solar { background: radial-gradient(circle at 30% 50%, #e67e22, #000); }
+        .visual-earth { background: linear-gradient(to top right, #000, #2980b9); }
+        .visual-layout { background: linear-gradient(135deg, #0b0c10, #45a29e); }
+        .visual-planner { background: linear-gradient(135deg, #2c3e50, #8e44ad); }
+
+        .project-img {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            z-index: 2;
+            transition: transform 0.5s ease;
+        }
+
+        .fallback-icon {
+            z-index: 1;
+            opacity: 0.8;
+            transform: scale(1);
+            transition: transform 0.5s ease;
+        }
+
+        .project-card:hover .project-img { transform: scale(1.05); }
+        .project-card:hover .fallback-icon { transform: scale(1.1); }
+
+        .card-content { padding: 30px; position: relative; z-index: 5; background: var(--card-bg); }
+        .card-title { font-size: 1.3rem; color: var(--text-white); margin-bottom: 12px; }
+        .card-link { color: var(--accent-primary); font-weight: 600; display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+
+        .contact-section {
+            text-align: center;
+            background: #08090c;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            padding: 80px 0;
+        }
+
+        footer { text-align: center; padding: 60px 0; background: #050608; border-top: 1px solid rgba(255,255,255,0.05); }
+        .impressum { margin-top: 30px; font-size: 0.75rem; opacity: 0.6; }
+
+        /* --- MODAL STYLES --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
+            z-index: 1000;
+            display: none; justify-content: center; align-items: center;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        
+        .modal-container {
+            background: var(--card-bg);
+            border: 1px solid var(--accent-secondary);
+            border-radius: 12px;
+            padding: 40px;
+            width: 90%; max-width: 500px;
+            position: relative;
+            transform: translateY(20px); transition: transform 0.3s ease;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .modal-overlay.active .modal-container { transform: translateY(0); }
+
+        .modal-close {
+            position: absolute; top: 15px; right: 20px;
+            font-size: 24px; color: var(--text-main); cursor: pointer;
+            transition: color 0.2s;
+        }
+        .modal-close:hover { color: var(--accent-primary); }
+
+        .form-group { margin-bottom: 20px; text-align: left; }
+        .form-label { display: block; color: var(--text-white); margin-bottom: 8px; font-size: 0.9rem; font-weight: 600; }
+        .form-input, .form-textarea {
+            width: 100%; padding: 12px;
+            background: #0b0c10; border: 1px solid #45a29e;
+            color: white; border-radius: 4px;
+            font-family: inherit; font-size: 0.95rem;
+        }
+        .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 10px rgba(102, 252, 241, 0.1); }
+        .form-textarea { resize: vertical; min-height: 120px; }
+        
+        /* Checkbox styling for GDPR */
+        .form-checkbox-group { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 25px; font-size: 0.85rem; color: var(--text-main); text-align: left; }
+        .form-checkbox-group input { margin-top: 4px; accent-color: var(--accent-primary); width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+        .form-checkbox-group label { cursor: pointer; line-height: 1.4; }
+
+        .success-message {
+            display: none; color: #66fcf1; text-align: center; font-size: 1.1rem;
+            padding: 20px; background: rgba(102, 252, 241, 0.1); border-radius: 8px; border: 1px solid #66fcf1;
+        }
+
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 768px) {
+            .hero-title { font-size: 2.5rem; }
+            .services-grid, .about-grid { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
 <body>
 
-    <div id="loader"><div class="spinner"></div></div>
+    <nav>
+        <div class="container nav-content">
+            <div class="logo">Process<span>AI</span></div>
+            <div style="font-size: 0.8rem; color: var(--accent-secondary); font-weight: 600;">EST. 2025</div>
+        </div>
+    </nav>
 
-    <div id="gatekeeper">
-        <div class="login-box">
-            <h2 style="color: #44aadd; margin-top:0;">ŠKOLSKÝ PRÍSTUP</h2>
-            <p style="color: #888; font-size: 14px;">Zadajte kód od učiteľa</p>
-            <input type="text" id="activation-code" placeholder="XXXX-XXXX" maxlength="10">
-            <button onclick="checkCode()">VSTÚPIŤ</button>
-            <div id="error-msg" style="color:#ff4444; display:none; margin-top:10px;">Neplatný kód</div>
+    <header>
+        <div class="container hero-content">
+            <h1 class="hero-title">Automobilová Expertíza.<br><span>Riadená Umelou Inteligenciou.</span></h1>
+            <p class="hero-subtitle">
+                Strategické poradenstvo pre automotive segment. Optimalizácia projektov a implementácia inteligentných riešení.
+            </p>
+            <!-- Changed to trigger JS instead of mailto -->
+            <button onclick="openModal()" class="cta-button">Konzultovať projekt</button>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2 class="section-title">Odborné Služby</h2>
+            <div class="services-grid">
+                <div class="service-card">
+                    <h3 class="service-title">AI Business Stratégia</h3>
+                    <p>Zavádzanie AI do podnikových procesov pre zvýšenie efektivity a zníženie nákladov v rámci CAIBS štandardov.</p>
+                </div>
+                <div class="service-card">
+                    <h3 class="service-title">Project Management</h3>
+                    <p>Riadenie nábehov nových technológií (E-Compressors, Fuel Cell, E-Turbo) od prototypu až po sériovú produkciu.</p>
+                </div>
+                <div class="service-card">
+                    <h3 class="service-title">Simulačné Nástroje</h3>
+                    <p>Vývoj interaktívnych 3D simulácií pre technické vzdelávanie a vizualizáciu zložitých priemyselných procesov.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section style="background: rgba(255,255,255,0.02);">
+        <div class="container">
+            <div class="about-grid">
+                <div>
+                    <h2 class="section-title">Leadership</h2>
+                    <p>
+                        S viac ako 17-ročnou praxou v automotive, riadením projektových tímov a produkcie, prinášame unikátne prepojenie praktickej výroby s najmodernejšími digitálnymi technológiami.
+                    </p>
+                    <br>
+                    <p>
+                        Zameriavame sa na premostenie tradičných inžinierskych procesov s flexibilitou umelej inteligencie, čím pomáham firmám adaptovať sa na prichádzajúce výzvy v oblasti e-mobility a digitalizácie.
+                    </p>
+                    <div style="margin-top: 30px;">
+                        <span class="badge">Certified AI Operations Manager</span>
+                        <span class="badge">Certified AI Business Strategist</span>
+                        <span class="badge">Head of Project department</span>
+                        <span class="badge">Automotive Specialist</span>
+                    </div>
+                </div>
+                <div style="background: var(--card-bg); padding: 40px; border-radius: 12px; border: 1px solid var(--accent-secondary);">
+                    <h4 style="color: white; margin-bottom: 20px;">Sektorový záber</h4>
+                    <ul style="list-style: none; display: flex; flex-direction: column; gap: 15px; font-size: 0.9rem;">
+                        <li style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 8px; height: 8px; background: var(--accent-primary); border-radius: 50%;"></div> E-Compressors & Turbo systems
+                        </li>
+                        <li style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 8px; height: 8px; background: var(--accent-primary); border-radius: 50%;"></div> Fuel Cell Compressor (FCC) technologies
+                        </li>
+                        <li style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 8px; height: 8px; background: var(--accent-primary); border-radius: 50%;"></div> New Product Launches & CAPEX
+                        </li>
+                        <li style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 8px; height: 8px; background: var(--accent-primary); border-radius: 50%;"></div> Operational Quality & Logistics
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 1: AUTOMOTIVE TOOLS -->
+    <section id="automotive-tools">
+        <div class="container">
+            <h2 class="section-title">Automotive & Priemyselné Aplikácie</h2>
+            <p class="section-subtitle">
+                Praktické softvérové nástroje vyvinuté pre optimalizáciu reálnych výrobných procesov, riadenie dokumentácie a vizualizáciu tokov na montážnych linkách.
+            </p>
+            <div class="portfolio-grid">
+                
+                <!-- PROJECT 1: Interactive Layout -->
+                <article class="project-card">
+                    <div class="card-visual visual-layout">
+                        <!-- Looking for screenshots/layout.png -->
+                        <img src="screenshots/layout.png" alt="Interactive Layout Tool" class="project-img" onerror="this.style.display='none'">
+                        
+                        <!-- Layout Icon -->
+                        <svg class="fallback-icon" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                    </div>
+                    <div class="card-content">
+                        <h3 class="card-title">Interactive Line Layout</h3>
+                        <p>Pokročilý nástroj na vizualizáciu toku (Dual-Line Architecture). Umožňuje dynamické prepínanie projektov, identifikáciu úzkych miest (Bottlenecks) a vizualizáciu sekvencií pre optimalizáciu zaškolovania a dokumentácie.</p>
+                        <a href="/Interactive-Layout/" target="_blank" class="card-link">Spustiť nástroj &rarr;</a>
+                    </div>
+                </article>
+
+                <!-- PROJECT 2: Production Planner (UPDATED LINK) -->
+                <article class="project-card">
+                    <div class="card-visual visual-planner">
+                        <img src="screenshots/planner.png" alt="Capacity Planning Tool" class="project-img" onerror="this.style.display='none'">
+                        
+                        <!-- Planner Icon (Chart/Calendar) -->
+                        <svg class="fallback-icon" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                    </div>
+                    <div class="card-content">
+                        <h3 class="card-title">Production Capacity Planner</h3>
+                        <p>Komplexný nástroj pre Mikro a Makro (strategické) plánovanie. Výpočet headcountu, modelovanie zmien a OEE v reálnom čase na základe cyklových časov a dopytu.</p>
+                        <!-- Link to Subdomain -->
+                        <a href="https://planner.processai.sk/" target="_blank" class="card-link">Spustiť nástroj &rarr;</a>
+                    </div>
+                </article>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 2: EDUCATIONAL SIMULATIONS -->
+    <section id="educational-simulations" style="background-color: #050608; border-top: 1px solid rgba(255,255,255,0.05);">
+        <div class="container">
+            <h2 class="section-title">Edukačné & 3D Vizualizácie</h2>
+            <p class="section-subtitle">
+                Interaktívne webové modely demonštrujúce fyzikálne javy a možnosti 3D renderingu v prehliadači.
+            </p>
+            <div class="portfolio-grid">
+
+                <article class="project-card">
+                    <div class="card-visual visual-solar">
+                        <img src="screenshots/solar.png" alt="Solar System 3D Interface" class="project-img" onerror="this.style.display='none'">
+                        <svg class="fallback-icon" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    </div>
+                    <div class="card-content">
+                        <h3 class="card-title">Solar System 3D</h3>
+                        <p>Webová simulácia planetárnej mechaniky postavená na Three.js, demonštrujúca možnosti vizualizácie dát v 3D priestore.</p>
+                        <!-- Updated Link to Subdomain -->
+                        <a href="https://solar.processai.sk/" target="_blank" class="card-link">Otvoriť simuláciu &rarr;</a>
+                    </div>
+                </article>
+
+                <article class="project-card">
+                    <div class="card-visual visual-earth">
+                        <img src="screenshots/earth.png" alt="Earth Tilt UI" class="project-img" onerror="this.style.display='none'">
+                        <svg class="fallback-icon" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/></svg>
+                    </div>
+                    <div class="card-content">
+                        <h3 class="card-title">Earth Tilt Simulation</h3>
+                        <!-- Updated Text -->
+                        <p>Fyzikálny model sklonu zemskej osi. Demonštrácia možností 3D vizualizácie pre technické manuály a digitálne dvojčatá.</p>
+                        <a href="/Earth-tilt/" target="_blank" class="card-link">Otvoriť simuláciu &rarr;</a>
+                    </div>
+                </article>
+
+            </div>
+        </div>
+    </section>
+
+    <section class="contact-section">
+        <div class="container">
+            <h2 class="section-title" style="text-align: center; border: none; font-size: 1.8rem; margin-bottom: 2rem;">Pripravení optimalizovať?</h2>
+            <div style="text-align: center;">
+                <!-- Changed to trigger JS instead of mailto -->
+                <button onclick="openModal()" class="cta-button">Kontaktovať ProcessAI</button>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p><strong>ProcessAI</strong> &copy; 2025</p>
+            <p style="font-size: 0.9rem; margin-top: 10px;">Automotive Excellence & AI Intelligence</p>
+            
+            <div class="impressum">
+                <p>ProcessAI</p>
+                <p>Mesto: Prešov, Slovensko | Email: info@processai.sk</p>
+                <p></p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- CONTACT MODAL -->
+    <div class="modal-overlay" id="contactModal">
+        <div class="modal-container">
+            <span class="modal-close" onclick="closeModal()">&times;</span>
+            <h2 style="color:white; margin-bottom:10px;">Kontaktovať ProcessAI</h2>
+            <p style="color:var(--text-main); font-size:0.9rem; margin-bottom:20px;">Vyplňte formulár a my sa vám ozveme čo najskôr.</p>
+            
+            <!-- FORM -->
+            <form id="contactForm" action="https://formsubmit.co/info@processai.sk" method="POST">
+                <!-- Config Fields -->
+                <input type="hidden" name="_captcha" value="false">
+                <input type="hidden" name="_template" value="table">
+                <input type="hidden" name="_subject" value="Nový dopyt z ProcessAI webu">
+
+                <div class="form-group">
+                    <label class="form-label">Meno / Spoločnosť</label>
+                    <input type="text" name="name" class="form-input" required placeholder="Vaše meno">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-input" required placeholder="vas@email.com">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Správa / Popis projektu</label>
+                    <textarea name="message" class="form-textarea" required placeholder="Stručný popis vašich potrieb..."></textarea>
+                </div>
+
+                <!-- GDPR CHECKBOX -->
+                <div class="form-checkbox-group">
+                    <input type="checkbox" id="gdpr" name="gdpr_consent" required>
+                    <label for="gdpr">
+                        Súhlasím so spracovaním osobných údajov za účelom odpovede.
+                        <br>
+                        <span style="font-size:0.75rem; opacity:0.6; display:block; margin-top:2px;">
+                            (Údaje slúžia výlučne na komunikáciu a nebudú poskytnuté tretím stranám.)
+                        </span>
+                    </label>
+                </div>
+
+                <button type="submit" class="cta-button" style="width:100%;">Odoslať správu</button>
+            </form>
+
+            <div id="successMsg" class="success-message">
+                ✅ Správa bola úspešne odoslaná.<br>Ďakujeme za váš záujem.
+            </div>
         </div>
     </div>
 
-    <div id="planet-nav" style="display:none;"></div>
-
-    <div id="canvas-container"></div>
-
-    <div id="side-ui">
-        <h1>Slnečná Sústava 3D</h1>
-        <p class="subtitle">Ťahaním otáčajte • Kolieskom približujte • Kliknutím na planétu zamerajte<br>Pravým tlačidlom ťaháte</p>
-        <div class="button-group">
-            <button id="pause-btn" class="menu-btn" onclick="toggleOrbit()">Orbity: ZAPNUTÉ</button>
-            <button class="menu-btn" onclick="resetCamera()">Resetovať pohľad</button>
-            <button class="menu-btn" onclick="startQuiz()">Spustiť Kvíz</button>
-        </div>
-    </div>
-
-    <div id="quiz-overlay">
-        <div id="quiz-question">Načítavam...</div>
-        <div id="quiz-feedback"></div>
-        <div id="quiz-score"></div>
-        <button onclick="stopQuiz()" style="margin-top:15px; width:100%; padding:8px; background:transparent; border:1px solid #ff4444; color:#ff4444; cursor:pointer; border-radius:4px; font-size: 11px;">Ukončiť</button>
-    </div>
-
-    <div id="results-screen">
-        <div class="results-box">
-            <h2 style="margin-top:0; color:#44aadd;">VÝSLEDOK TESTU</h2>
-            <div class="grade-text" id="final-score">0 / 8</div>
-            <div id="grade-comment" style="margin-bottom: 25px; color:#ccc;"></div>
-            <button onclick="stopQuiz()" style="padding: 12px 30px; background:#44aadd; border:none; color:white; border-radius:5px; cursor:pointer; font-weight:bold;">SPÄŤ</button>
-        </div>
-    </div>
-
-    <div id="info-card">
-        <div class="close-btn" onclick="closePopup()">×</div>
-        <h2 id="planet-name">Planéta</h2>
-        <div class="data-row"><span class="label">Vzdialenosť:</span><span class="value" id="planet-dist"></span></div>
-        <div class="data-row"><span class="label">Priemer:</span><span class="value" id="planet-diam"></span></div>
-        <div class="data-row"><span class="label">Obežná doba:</span><span class="value" id="planet-orbit"></span></div>
-        <div class="data-row"><span class="label">Rotácia:</span><span class="value" id="planet-rotate"></span></div>
-        <div class="fact-box" id="planet-fact"></div>
-    </div>
-
+    <!-- SCRIPTS -->
     <script>
-        // CONFIG: Moons Added!
-        const planetData = [
-            { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
-            { name: "Merkúr", radius: 0.8, distance3D: 35, speed: 0.015, color: 0xaaaaaa, type: "rocky", texture: "mercury.jpg", realDist: "57.9M km", realDiam: "4,879 km", orbit: "88 dní", rotation: "59 dní", fact: "Najmenšia planéta, ktorá sa ochladzovaním zmenšuje." },
-            { name: "Venuša", radius: 1.9, distance3D: 50, speed: 0.012, color: 0xe3bb76, type: "atmosphere", texture: "venus.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Deň na Venuši je dlhší ako jej rok." },
-            { 
-                name: "Zem", radius: 2, distance3D: 70, speed: 0.010, color: 0x2233ff, type: "earth", texture: "earth.jpg", realDist: "149.6M km", realDiam: "12,742 km", orbit: "365 dní", rotation: "24 hod", fact: "Jediná planéta nepomenovaná po bohovi.",
-                moons: [{ name: "Mesiac", radius: 0.5, distance: 4, speed: 0.05, texture: "moon.jpg" }] // ADDED MOON
-            },
-            { 
-                name: "Mars", radius: 1.1, distance3D: 90, speed: 0.008, color: 0xdd4422, type: "rocky", texture: "mars.jpg", realDist: "227.9M km", realDiam: "6,779 km", orbit: "687 dní", rotation: "24.6 hod", fact: "Domov najvyššej sopky Olympus Mons.",
-                moons: [{ name: "Phobos", radius: 0.3, distance: 2.5, speed: 0.08, texture: "moon.jpg" }] // REUSED MOON TEXTURE
-            },
-            { 
-                name: "Jupiter", radius: 10, distance3D: 130, speed: 0.005, color: 0xd8ca9d, type: "gas", texture: "jupiter.jpg", realDist: "778.5M km", realDiam: "139,820 km", orbit: "11.9 r", rotation: "9.9 hod", fact: "Najväčšia planéta s obrovskou búrkou.",
-                moons: [{ name: "Europa", radius: 0.6, distance: 15, speed: 0.04, texture: "europa.jpg" }] // ADDED EUROPA
-            },
-            { name: "Saturn", radius: 8.5, distance3D: 180, speed: 0.004, color: 0xcfae76, hasRings: true, type: "gas", texture: "saturn.jpg", realDist: "1.4B km", realDiam: "116,460 km", orbit: "29.5 r", rotation: "10.7 hod", fact: "Prstence sú tvorené prevažne ľadom." },
-            { name: "Urán", radius: 4, distance3D: 220, speed: 0.003, color: 0xadd8e6, type: "gas", texture: "uranus.jpg", realDist: "2.9B km", realDiam: "50,724 km", orbit: "84 r", rotation: "17.2 hod", fact: "Rotuje takmer vodorovne." },
-            { name: "Neptún", radius: 3.9, distance3D: 260, speed: 0.002, color: 0x3344ff, type: "gas", texture: "neptune.jpg", realDist: "4.5B km", realDiam: "49,244 km", orbit: "165 r", rotation: "16.1 hod", fact: "Najvzdialenejšia planéta od Slnka." }
-        ];
+        const modal = document.getElementById('contactModal');
+        const form = document.getElementById('contactForm');
+        const successMsg = document.getElementById('successMsg');
 
-        let scene, camera, renderer, controls, raycaster, mouse;
-        let planets = [];
-        let satellites = []; // Stores all moons
-        let isQuizMode = false, quizQueue = [], quizIndex = 0, score = 0, quizTarget = null, isWaiting = false;
-        let areOrbitsActive = true; 
-        let touchStartX = 0, touchStartY = 0;
-        
-        // --- DELTA TIME & FPS LIMIT ---
-        const clock = new THREE.Clock(); 
-        const fpsLimit = 60; // CAP AT 60 FPS
-        const interval = 1000 / fpsLimit;
-        let lastFrameTime = 0;
+        function openModal() {
+            modal.classList.add('active');
+        }
 
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                const loader = document.getElementById('loader');
-                if(loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 800); }
-            }, 500);
+        function closeModal() {
+            modal.classList.remove('active');
+            // Reset form visibility if closed after success
+            if(successMsg.style.display === 'block') {
+                setTimeout(() => {
+                    form.style.display = 'block';
+                    successMsg.style.display = 'none';
+                    form.reset();
+                }, 300);
+            }
+        }
+
+        // Close on clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
         });
 
-        function checkCode() {
-            const inputHash = btoa(document.getElementById('activation-code').value.toUpperCase());
-            if(inputHash === "TkdWLTIwMjU=" || inputHash === "UkFBQkU=" || inputHash === "VEFLVElL") {
-                document.getElementById('gatekeeper').style.display = 'none';
-                document.getElementById('side-ui').style.visibility = 'visible';
-                document.getElementById('planet-nav').style.display = 'flex';
-                init();
-            } else { document.getElementById('error-msg').style.display = 'block'; }
-        }
+        // Handle Form Submit via AJAX (Prevent Redirect)
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const btn = form.querySelector('button[type="submit"]');
+            const originalText = btn.innerText;
+            btn.innerText = "Odosielam...";
+            btn.disabled = true;
 
-        function generateOrganicTexture(data) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512; canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            const baseCol = '#' + (data.color || 0x888888).toString(16).padStart(6, '0');
-            ctx.fillStyle = baseCol; ctx.fillRect(0, 0, 512, 512);
-            for (let i = 0; i < 8; i++) {
-                const opacity = Math.random() * 0.15;
-                const brightness = (Math.random() - 0.5) * 60;
-                const layerCol = adjustColor(baseCol, brightness);
-                ctx.fillStyle = layerCol; ctx.globalAlpha = opacity;
-                for (let j = 0; j < 20; j++) {
-                    const x = Math.random() * 512; const y = Math.random() * 512;
-                    const rx = 80 + Math.random() * 250; const ry = 15 + Math.random() * 50;
-                    ctx.beginPath(); ctx.ellipse(x, y, rx, rx/2.5, Math.random() * Math.PI, 0, Math.PI * 2); ctx.fill();
+            fetch(form.action, {
+                method: "POST",
+                body: new FormData(form),
+                headers: {
+                    'Accept': 'application/json'
                 }
-            }
-            ctx.globalAlpha = 1.0;
-            const tex = new THREE.CanvasTexture(canvas);
-            tex.encoding = THREE.sRGBEncoding;
-            return tex;
-        }
-
-        function adjustColor(color, amount) {
-            let col = parseInt(color.replace('#',''), 16);
-            let r = (col >> 16) + amount; let g = ((col >> 8) & 0x00FF) + amount; let b = (col & 0x0000FF) + amount;
-            r = Math.min(255, Math.max(0, r)); g = Math.min(255, Math.max(0, g)); b = Math.min(255, Math.max(0, b));
-            return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
-        }
-
-        function createSaturnRingTexture() {
-            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
-            const ctx = canvas.getContext('2d'); const centerX = 256; const centerY = 256;
-            ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0,0,512,512);
-            const gradient = ctx.createRadialGradient(centerX, centerY, 100, centerX, centerY, 250);
-            gradient.addColorStop(0, 'rgba(0,0,0,0)'); gradient.addColorStop(0.35, 'rgba(220, 210, 190, 0.4)');
-            gradient.addColorStop(0.5, 'rgba(220, 210, 190, 0.9)'); gradient.addColorStop(0.55, 'rgba(0,0,0,0.1)');
-            gradient.addColorStop(0.6, 'rgba(210, 200, 180, 0.8)'); gradient.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.beginPath(); ctx.arc(centerX, centerY, 250, 0, 2 * Math.PI); ctx.fillStyle = gradient; ctx.fill();
-            ctx.strokeStyle = 'rgba(200, 190, 170, 0.1)'; ctx.lineWidth = 1;
-            for(let r=120; r<240; r+=3) { ctx.beginPath(); ctx.arc(centerX, centerY, r, 0, 2*Math.PI); ctx.stroke(); }
-            return new THREE.CanvasTexture(canvas);
-        }
-
-        function createSunGlow() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64; canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
-            gradient.addColorStop(0.2, 'rgba(255, 200, 50, 0.6)'); 
-            gradient.addColorStop(0.5, 'rgba(255, 150, 0, 0.2)'); 
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = gradient; ctx.fillRect(0,0,64,64);
-            const spriteMaterial = new THREE.SpriteMaterial({ 
-                map: new THREE.CanvasTexture(canvas), 
-                color: 0xffaa00, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false 
-            });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(130, 130, 1); 
-            return sprite;
-        }
-
-        function init() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000005);
-            scene.fog = new THREE.FogExp2(0x000005, 0.0012); 
-
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
-            camera.position.set(0, 100, 250);
-
-            try { renderer = new THREE.WebGLRenderer({ antialias: true }); } 
-            catch (e) { renderer = new THREE.WebGLRenderer({ antialias: false }); }
-            renderer.outputEncoding = THREE.sRGBEncoding;
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            // PERFORMANCE FIX: Cap pixel ratio to 2 to save battery/GPU on high-res screens
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
-
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; controls.dampingFactor = 0.05;
-            controls.minDistance = 20; controls.maxDistance = 500;
-
-            const hemiLight = new THREE.HemisphereLight( 0xddeeff, 0x0f0e0d, 0.6 );
-            scene.add( hemiLight );
-            
-            const ambient = new THREE.AmbientLight(0xffffff, 0.7); 
-            scene.add(ambient);
-            
-            const sunLight = new THREE.PointLight(0xffffff, 3.5, 0);
-            scene.add(sunLight);
-
-            const glow = createSunGlow();
-            scene.add(glow);
-
-            createUniverse(); 
-            createSolarSystem();
-            populateNav(); 
-
-            raycaster = new THREE.Raycaster();
-            mouse = new THREE.Vector2();
-
-            window.addEventListener('resize', onWindowResize, false);
-            window.addEventListener('click', onMouseClick, false);
-            renderer.domElement.addEventListener('touchstart', onTouchStart, false);
-            renderer.domElement.addEventListener('touchend', onTouchEnd, false);
-            
-            animate();
-        }
-
-        function populateNav() {
-            const nav = document.getElementById('planet-nav');
-            planetData.forEach(p => {
-                const btn = document.createElement('div');
-                btn.className = 'nav-item';
-                btn.innerText = p.name;
-                btn.onclick = () => selectPlanetByName(p.name);
-                nav.appendChild(btn);
-            });
-        }
-
-        function selectPlanetByName(name) {
-            const targetMesh = planets.find(p => p.userData.name === name);
-            if (targetMesh) {
-                if (isQuizMode) {
-                    handleQuizPick(targetMesh.userData);
+            })
+            .then(response => {
+                if (response.ok) {
+                    form.style.display = 'none';
+                    successMsg.style.display = 'block';
                 } else {
-                    if (areOrbitsActive) toggleOrbit();
-                    showPopup(targetMesh.userData);
-                    controls.target.copy(targetMesh.position);
+                    alert("Ospravedlňujeme sa, nastala chyba pri odosielaní. Skúste to prosím neskôr alebo nám napíšte priamo na info@processai.sk");
+                    btn.innerText = originalText;
+                    btn.disabled = false;
                 }
-            }
-        }
-
-        function createUniverse() {
-            const geometry = new THREE.BufferGeometry();
-            const vertices = [];
-            for (let i = 0; i < 4000; i++) vertices.push(THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000), THREE.MathUtils.randFloatSpread(2000));
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            
-            const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 32;
-            const ctx = canvas.getContext('2d');
-            const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.5)'); gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            ctx.fillStyle = gradient; ctx.fillRect(0, 0, 32, 32);
-            
-            const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 3.5, map: new THREE.CanvasTexture(canvas), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 });
-            const stars = new THREE.Points(geometry, starMaterial);
-            scene.add(stars);
-
-            const textureLoader = new THREE.TextureLoader();
-            textureLoader.load(
-                'stars.jpg',  
-                function(texture) {
-                    texture.encoding = THREE.sRGBEncoding;
-                    addGalaxySphere(texture);
-                },
-                undefined,
-                function(err) {
-                     textureLoader.load('Stars.jpg', function(t){
-                         t.encoding = THREE.sRGBEncoding;
-                         addGalaxySphere(t);
-                    });
-                }
-            );
-        }
-
-        function addGalaxySphere(texture) {
-            const geometry = new THREE.SphereGeometry(5000, 60, 40);
-            const material = new THREE.MeshBasicMaterial({ 
-                map: texture, side: THREE.BackSide, depthWrite: false, fog: false 
+            })
+            .catch(error => {
+                alert("Chyba spojenia. Skontrolujte pripojenie na internet.");
+                btn.innerText = originalText;
+                btn.disabled = false;
             });
-            const starSphere = new THREE.Mesh(geometry, material);
-            scene.add(starSphere);
-        }
-
-        function createSolarSystem() {
-            const textureLoader = new THREE.TextureLoader();
-            const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-            
-            planetData.forEach(data => {
-                // OPTIMIZATION: Reduced segments from 128 to 64 to lower GPU load
-                const geometry = new THREE.SphereGeometry(data.radius, 64, 64);
-                let material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.05 });
-                const onTexError = () => { material.map = generateOrganicTexture(data); material.needsUpdate = true; };
-                
-                const tex = textureLoader.load(data.texture, (t) => { 
-                    t.encoding = THREE.sRGBEncoding; t.anisotropy = maxAnisotropy; material.map = t; material.needsUpdate = true;
-                }, undefined, onTexError);
-                
-                if (data.name === "Slnko") { material = new THREE.MeshBasicMaterial({ color: 0xffffff, map: tex }); }
-
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.userData = { ...data, angle: Math.random() * Math.PI * 2 }; 
-                
-                if (data.distance3D === 0) {
-                     mesh.position.set(0,0,0);
-                } else {
-                    mesh.position.x = Math.cos(mesh.userData.angle) * data.distance3D;
-                    mesh.position.z = Math.sin(mesh.userData.angle) * data.distance3D;
-                }
-
-                scene.add(mesh);
-                planets.push(mesh);
-
-                // SATELLITES (MOONS) LOGIC
-                if (data.moons) {
-                    data.moons.forEach(moonData => {
-                        const mGeo = new THREE.SphereGeometry(moonData.radius, 32, 32);
-                        let mMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 });
-                        // Load moon texture
-                        textureLoader.load(moonData.texture, (t) => { 
-                            t.encoding = THREE.sRGBEncoding; mMat.map = t; mMat.needsUpdate = true;
-                        }, undefined, () => { mMat.map = generateOrganicTexture({color: 0x888888}); mMat.needsUpdate = true; });
-
-                        const moonMesh = new THREE.Mesh(mGeo, mMat);
-                        moonMesh.userData = { 
-                            ...moonData, 
-                            angle: Math.random() * Math.PI * 2,
-                            parent: mesh 
-                        };
-                        scene.add(moonMesh);
-                        satellites.push(moonMesh);
-                    });
-                }
-
-                if (data.hasRings) {
-                    const ringGeo = new THREE.PlaneGeometry(data.radius * 4.5, data.radius * 4.5);
-                    const ringMat = new THREE.MeshBasicMaterial({ map: createSaturnRingTexture(), side: THREE.DoubleSide, transparent: true, depthWrite: false });
-                    const ring = new THREE.Mesh(ringGeo, ringMat);
-                    ring.rotation.x = -Math.PI / 2.5; mesh.add(ring);
-                }
-
-                if (data.distance3D > 0) {
-                    const orbitCurve = new THREE.EllipseCurve(0, 0, data.distance3D, data.distance3D, 0, 2 * Math.PI, false, 0);
-                    const orbitLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitCurve.getPoints(128)), new THREE.LineBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.3 }));
-                    orbitLine.rotation.x = Math.PI / 2;
-                    scene.add(orbitLine);
-                }
-            });
-        }
-
-        function toggleOrbit() {
-            areOrbitsActive = !areOrbitsActive;
-            const btn = document.getElementById('pause-btn');
-            if (areOrbitsActive) {
-                btn.innerText = "Orbity: ZAPNUTÉ";
-                btn.classList.remove('active');
-            } else {
-                btn.innerText = "Orbity: POZASTAVENÉ";
-                btn.classList.add('active');
-            }
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // --- FPS CAP LOGIC ---
-            // If the PC is trying to run at 144Hz, this forces it to wait
-            const now = performance.now();
-            const elapsed = now - lastFrameTime;
-            if (elapsed < interval) return; // Skip frame if too fast
-
-            // Correct for drift
-            lastFrameTime = now - (elapsed % interval);
-            
-            // --- DELTA TIME LOGIC ---
-            let delta = clock.getDelta();
-            if (delta > 0.1) delta = 0.1; // Cap delta to prevent massive jumps during lags
-
-            // PLANETS
-            planets.forEach(mesh => {
-                const data = mesh.userData;
-                const spinSpeed = data.name === "Slnko" ? 0.002 : 0.004;
-                mesh.rotation.y += spinSpeed * delta * 60;
-
-                if (areOrbitsActive && !isQuizMode && data.distance3D > 0) {
-                    mesh.userData.angle -= data.speed * 25 * delta; 
-                    mesh.position.x = Math.cos(mesh.userData.angle) * data.distance3D;
-                    mesh.position.z = Math.sin(mesh.userData.angle) * data.distance3D;
-                }
-            });
-
-            // SATELLITES (MOONS)
-            satellites.forEach(moon => {
-                const data = moon.userData;
-                const parent = data.parent;
-                
-                moon.rotation.y += 0.01 * delta * 60;
-
-                if (areOrbitsActive && !isQuizMode) {
-                    data.angle -= data.speed * 25 * delta; 
-                }
-                
-                moon.position.x = parent.position.x + Math.cos(data.angle) * data.distance;
-                moon.position.z = parent.position.z + Math.sin(data.angle) * data.distance;
-                moon.position.y = parent.position.y; 
-            });
-            
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function resetCamera() { controls.target.set(0, 0, 0); camera.position.set(0, 100, 250); closePopup(); }
-
-        function onTouchStart(e) {
-            touchStartX = e.changedTouches[0].clientX;
-            touchStartY = e.changedTouches[0].clientY;
-        }
-
-        function onTouchEnd(e) {
-            const dx = e.changedTouches[0].clientX - touchStartX;
-            const dy = e.changedTouches[0].clientY - touchStartY;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < 20) {
-                e.preventDefault(); 
-                checkIntersection(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-            }
-        }
-
-        function onMouseClick(e) {
-            checkIntersection(e.clientX, e.clientY);
-        }
-
-        function checkIntersection(x, y) {
-            const el = document.elementFromPoint(x, y);
-            if (el && (el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav'))) return;
-            
-            if (isWaiting) return;
-
-            mouse.x = (x / window.innerWidth) * 2 - 1;
-            mouse.y = -(y / window.innerHeight) * 2 + 1;
-            
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects([...planets, ...satellites]); // Check moons too!
-            
-            if (intersects.length > 0) {
-                const target = intersects[0].object;
-                
-                // If user clicks a moon, focus on parent for now (simplifies UI)
-                const data = target.userData.parent ? target.userData.parent.userData : target.userData;
-                const pos = target.userData.parent ? target.userData.parent.position : target.position;
-
-                if (isQuizMode) handleQuizPick(data);
-                else { 
-                    if (areOrbitsActive) toggleOrbit(); 
-                    showPopup(data); 
-                    controls.target.copy(pos); 
-                }
-            }
-        }
-
-        function showPopup(data) {
-            document.getElementById('planet-name').innerText = data.name;
-            document.getElementById('planet-dist').innerText = data.realDist;
-            document.getElementById('planet-diam').innerText = data.realDiam;
-            document.getElementById('planet-orbit').innerText = data.orbit;
-            document.getElementById('planet-rotate').innerText = data.rotation;
-            document.getElementById('planet-fact').innerText = data.fact;
-            document.getElementById('info-card').style.display = 'block';
-        }
-
-        function closePopup() { document.getElementById('info-card').style.display = 'none'; }
-
-        function startQuiz() {
-            isQuizMode = true; score = 0; quizIndex = 0;
-            if (areOrbitsActive) toggleOrbit();
-            quizQueue = planetData.filter(p => p.name !== "Slnko").sort(() => Math.random() - 0.5);
-            document.getElementById('quiz-overlay').style.display = 'block';
-            document.getElementById('side-ui').style.visibility = 'hidden';
-            nextQuestion();
-        }
-
-        function nextQuestion() {
-            if (quizIndex >= quizQueue.length) { finishQuiz(); return; }
-            quizTarget = quizQueue[quizIndex]; isWaiting = false;
-            document.getElementById('quiz-question').innerText = `Nájdi planétu: ${quizTarget.fact}`;
-            document.getElementById('quiz-feedback').innerText = "";
-            updateQuizDisplay();
-        }
-
-        function handleQuizPick(pick) {
-            if (isWaiting) return;
-            isWaiting = true;
-            const feed = document.getElementById('quiz-feedback');
-            if (pick.name === quizTarget.name) {
-                score++;
-                feed.innerHTML = `<span style="color:#00ff00">Správne!</span>`;
-                updateQuizDisplay();
-                setTimeout(() => { quizIndex++; nextQuestion(); }, 1000);
-            } else {
-                feed.innerHTML = `<span style="color:#ff4444">Nesprávne!</span> Bola to: ${quizTarget.name}`;
-                setTimeout(() => { quizIndex++; nextQuestion(); }, 2000);
-            }
-        }
-
-        function updateQuizDisplay() {
-            document.getElementById('quiz-score').innerText = `Otázka: ${quizIndex + 1} / 8 | Skóre: ${score}`;
-        }
-
-        function finishQuiz() {
-            document.getElementById('quiz-overlay').style.display = 'none';
-            document.getElementById('results-screen').style.display = 'flex';
-            document.getElementById('final-score').innerText = `${score} / 8`;
-            document.getElementById('grade-comment').innerText = score === 8 ? "Excelentné! Si pán vesmíru." : "Dobrá práca, skús to znova!";
-        }
-
-        function stopQuiz() {
-            isQuizMode = false;
-            isWaiting = false;
-            document.getElementById('quiz-overlay').style.display = 'none';
-            document.getElementById('results-screen').style.display = 'none';
-            document.getElementById('side-ui').style.visibility = 'visible';
-            resetCamera();
-        }
+        });
     </script>
+
 </body>
 </html>
