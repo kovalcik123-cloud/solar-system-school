@@ -220,9 +220,11 @@
         let areOrbitsActive = true; 
         let touchStartX = 0, touchStartY = 0;
         
-        // --- DELTA TIME FIX ---
-        // We create a clock to measure time between frames
+        // --- DELTA TIME & FPS LIMIT ---
         const clock = new THREE.Clock(); 
+        const fpsLimit = 60; // CAP AT 60 FPS
+        const interval = 1000 / fpsLimit;
+        let lastFrameTime = 0;
 
         window.addEventListener('load', () => {
             setTimeout(() => {
@@ -422,7 +424,8 @@
             const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
             
             planetData.forEach(data => {
-                const geometry = new THREE.SphereGeometry(data.radius, 128, 128);
+                // OPTIMIZATION: Reduced segments from 128 to 64 to lower GPU load
+                const geometry = new THREE.SphereGeometry(data.radius, 64, 64);
                 let material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.05 });
                 const onTexError = () => { material.map = generateOrganicTexture(data); material.needsUpdate = true; };
                 
@@ -496,22 +499,27 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
+            // --- FPS CAP LOGIC ---
+            // If the PC is trying to run at 144Hz, this forces it to wait
+            const now = performance.now();
+            const elapsed = now - lastFrameTime;
+            if (elapsed < interval) return; // Skip frame if too fast
+
+            // Correct for drift
+            lastFrameTime = now - (elapsed % interval);
             
             // --- DELTA TIME LOGIC ---
-            // Get seconds passed since last frame (e.g., 0.016 for 60fps, 0.033 for 30fps)
             let delta = clock.getDelta();
             if (delta > 0.1) delta = 0.1; // Cap delta to prevent massive jumps during lags
 
             // PLANETS
             planets.forEach(mesh => {
                 const data = mesh.userData;
-                // Rotate planet on its axis (Normalized by delta * 60 to maintain original 'feel')
                 const spinSpeed = data.name === "Slnko" ? 0.002 : 0.004;
                 mesh.rotation.y += spinSpeed * delta * 60;
 
                 if (areOrbitsActive && !isQuizMode && data.distance3D > 0) {
-                    // ORBIT SPEED: Replaced 0.5 constant with Time-Based Logic
-                    // 25 is the 'Speed Factor' (slightly reduced from 30) for smoother fast motion
                     mesh.userData.angle -= data.speed * 25 * delta; 
                     mesh.position.x = Math.cos(mesh.userData.angle) * data.distance3D;
                     mesh.position.z = Math.sin(mesh.userData.angle) * data.distance3D;
@@ -523,12 +531,9 @@
                 const data = moon.userData;
                 const parent = data.parent;
                 
-                // Moon rotation on axis (Normalized)
                 moon.rotation.y += 0.01 * delta * 60;
 
                 if (areOrbitsActive && !isQuizMode) {
-                    // Moon orbit speed (Normalized)
-                    // Multiplier 25 matches the planet logic
                     data.angle -= data.speed * 25 * delta; 
                 }
                 
@@ -584,22 +589,13 @@
                 
                 // If user clicks a moon, focus on parent for now (simplifies UI)
                 const data = target.userData.parent ? target.userData.parent.userData : target.userData;
-                const pos = target.userData.parent ? target.userData.parent.userData : target.position; // BUG FIX: Copy position correctly
+                const pos = target.userData.parent ? target.userData.parent.position : target.position;
 
-                // wait, controls.target.copy() needs a Vector3. target.userData.parent.position IS a Vector3.
-                // But target.position is also a Vector3.
-                // The previous code had `controls.target.copy(pos)`
-                // Let's re-verify:
-                // `const pos = target.userData.parent ? target.userData.parent.position : target.position;` 
-                // That line was correct in previous version. I'll ensure it stays correct.
-                
                 if (isQuizMode) handleQuizPick(data);
                 else { 
                     if (areOrbitsActive) toggleOrbit(); 
                     showPopup(data); 
-                    // Use simple logic for pos
-                     const targetPos = target.userData.parent ? target.userData.parent.position : target.position;
-                    controls.target.copy(targetPos); 
+                    controls.target.copy(pos); 
                 }
             }
         }
