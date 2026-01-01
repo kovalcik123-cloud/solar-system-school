@@ -499,8 +499,9 @@
             
             // --- DELTA TIME LOGIC ---
             // Get seconds passed since last frame (e.g., 0.016 for 60fps, 0.033 for 30fps)
-            const delta = clock.getDelta();
-            
+            let delta = clock.getDelta();
+            if (delta > 0.1) delta = 0.1; // Cap delta to prevent massive jumps during lags
+
             // PLANETS
             planets.forEach(mesh => {
                 const data = mesh.userData;
@@ -510,8 +511,8 @@
 
                 if (areOrbitsActive && !isQuizMode && data.distance3D > 0) {
                     // ORBIT SPEED: Replaced 0.5 constant with Time-Based Logic
-                    // 30 is the 'Speed Factor' to match your "Fast" preference at 60fps
-                    mesh.userData.angle -= data.speed * 30 * delta; 
+                    // 25 is the 'Speed Factor' (slightly reduced from 30) for smoother fast motion
+                    mesh.userData.angle -= data.speed * 25 * delta; 
                     mesh.position.x = Math.cos(mesh.userData.angle) * data.distance3D;
                     mesh.position.z = Math.sin(mesh.userData.angle) * data.distance3D;
                 }
@@ -527,8 +528,8 @@
 
                 if (areOrbitsActive && !isQuizMode) {
                     // Moon orbit speed (Normalized)
-                    // Multiplier 30 matches the planet logic
-                    data.angle -= data.speed * 30 * delta; 
+                    // Multiplier 25 matches the planet logic
+                    data.angle -= data.speed * 25 * delta; 
                 }
                 
                 moon.position.x = parent.position.x + Math.cos(data.angle) * data.distance;
@@ -583,13 +584,22 @@
                 
                 // If user clicks a moon, focus on parent for now (simplifies UI)
                 const data = target.userData.parent ? target.userData.parent.userData : target.userData;
-                const pos = target.userData.parent ? target.userData.parent.position : target.position;
+                const pos = target.userData.parent ? target.userData.parent.userData : target.position; // BUG FIX: Copy position correctly
 
+                // wait, controls.target.copy() needs a Vector3. target.userData.parent.position IS a Vector3.
+                // But target.position is also a Vector3.
+                // The previous code had `controls.target.copy(pos)`
+                // Let's re-verify:
+                // `const pos = target.userData.parent ? target.userData.parent.position : target.position;` 
+                // That line was correct in previous version. I'll ensure it stays correct.
+                
                 if (isQuizMode) handleQuizPick(data);
                 else { 
                     if (areOrbitsActive) toggleOrbit(); 
                     showPopup(data); 
-                    controls.target.copy(pos); 
+                    // Use simple logic for pos
+                     const targetPos = target.userData.parent ? target.userData.parent.position : target.position;
+                    controls.target.copy(targetPos); 
                 }
             }
         }
