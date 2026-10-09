@@ -216,7 +216,8 @@
         let scene, camera, renderer, controls, raycaster, mouse;
         let planets = [];
         let satellites = []; // Stores all moons
-        let isQuizMode = false, quizQueue = [], quizIndex = 0, score = 0, quizTarget = null, isWaiting = false;
+        let isQuizMode = false, isQuizResults = false, quizQueue = [], quizIndex = 0, score = 0, quizTarget = null, isWaiting = false;
+        let quizTimer = null, quizSession = 0, orbitsBeforeQuiz = true;
         let areOrbitsActive = true; 
         let touchStartX = 0, touchStartY = 0;
         
@@ -365,6 +366,7 @@
         }
 
         function selectPlanetByName(name) {
+            if (isQuizResults) return;
             const targetMesh = planets.find(p => p.userData.name === name);
             if (targetMesh) {
                 if (isQuizMode) {
@@ -576,7 +578,7 @@
             const el = document.elementFromPoint(x, y);
             if (el && (el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav'))) return;
             
-            if (isWaiting) return;
+            if (isWaiting || isQuizResults) return;
 
             mouse.x = (x / window.innerWidth) * 2 - 1;
             mouse.y = -(y / window.innerHeight) * 2 + 1;
@@ -612,16 +614,31 @@
 
         function closePopup() { document.getElementById('info-card').style.display = 'none'; }
 
+        function cancelQuizTimer() {
+            clearTimeout(quizTimer);
+            quizTimer = null;
+            quizSession++;
+        }
+
         function startQuiz() {
-            isQuizMode = true; score = 0; quizIndex = 0;
+            if (!isQuizMode && !isQuizResults) orbitsBeforeQuiz = areOrbitsActive;
+            cancelQuizTimer();
+            isQuizMode = true; isQuizResults = false;
+            score = 0; quizIndex = 0; quizTarget = null; isWaiting = false;
             if (areOrbitsActive) toggleOrbit();
             quizQueue = planetData.filter(p => p.name !== "Slnko").sort(() => Math.random() - 0.5);
+            closePopup();
+            document.getElementById('results-screen').style.display = 'none';
+            document.getElementById('final-score').innerText = '0 / 8';
+            document.getElementById('grade-comment').innerText = '';
+            document.getElementById('planet-nav').style.display = 'flex';
             document.getElementById('quiz-overlay').style.display = 'block';
             document.getElementById('side-ui').style.visibility = 'hidden';
             nextQuestion();
         }
 
         function nextQuestion() {
+            if (!isQuizMode) return;
             if (quizIndex >= quizQueue.length) { finishQuiz(); return; }
             quizTarget = quizQueue[quizIndex]; isWaiting = false;
             document.getElementById('quiz-question').innerText = `Nájdi planétu: ${quizTarget.fact}`;
@@ -630,18 +647,24 @@
         }
 
         function handleQuizPick(pick) {
-            if (isWaiting) return;
+            if (!isQuizMode || isQuizResults || isWaiting || !quizTarget) return;
             isWaiting = true;
             const feed = document.getElementById('quiz-feedback');
-            if (pick.name === quizTarget.name) {
+            const isCorrect = pick.name === quizTarget.name;
+            if (isCorrect) {
                 score++;
                 feed.innerHTML = `<span style="color:#00ff00">Správne!</span>`;
                 updateQuizDisplay();
-                setTimeout(() => { quizIndex++; nextQuestion(); }, 1000);
             } else {
                 feed.innerHTML = `<span style="color:#ff4444">Nesprávne!</span> Bola to: ${quizTarget.name}`;
-                setTimeout(() => { quizIndex++; nextQuestion(); }, 2000);
             }
+            const session = quizSession;
+            quizTimer = setTimeout(() => {
+                if (session !== quizSession || !isQuizMode) return;
+                quizTimer = null;
+                quizIndex++;
+                nextQuestion();
+            }, isCorrect ? 1000 : 2000);
         }
 
         function updateQuizDisplay() {
@@ -649,6 +672,11 @@
         }
 
         function finishQuiz() {
+            if (!isQuizMode) return;
+            cancelQuizTimer();
+            isQuizMode = false; isQuizResults = true;
+            isWaiting = false; quizTarget = null;
+            document.getElementById('planet-nav').style.display = 'none';
             document.getElementById('quiz-overlay').style.display = 'none';
             document.getElementById('results-screen').style.display = 'flex';
             document.getElementById('final-score').innerText = `${score} / 8`;
@@ -656,8 +684,14 @@
         }
 
         function stopQuiz() {
-            isQuizMode = false;
-            isWaiting = false;
+            const wasInQuiz = isQuizMode || isQuizResults;
+            cancelQuizTimer();
+            isQuizMode = false; isQuizResults = false;
+            isWaiting = false; quizTarget = null; quizQueue = [];
+            quizIndex = 0; score = 0;
+            document.getElementById('quiz-feedback').innerText = '';
+            document.getElementById('planet-nav').style.display = 'flex';
+            if (wasInQuiz && areOrbitsActive !== orbitsBeforeQuiz) toggleOrbit();
             document.getElementById('quiz-overlay').style.display = 'none';
             document.getElementById('results-screen').style.display = 'none';
             document.getElementById('side-ui').style.visibility = 'visible';
