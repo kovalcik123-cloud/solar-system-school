@@ -149,9 +149,10 @@
             min-width: 72px; min-height: 80px; max-width: 112px; flex: 1 0 72px; margin: 0; padding: 6px 8px;
             border: 1px solid transparent; border-radius: 16px; background: transparent; color: #dce8f2;
             font-size: 14px; font-weight: 500; text-transform: none; letter-spacing: 0;
-            transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+            transition: color 160ms ease;
         }
-        .nav-item:hover { background: rgba(68, 170, 221, 0.1); color: #fff; transform: none; }
+        .nav-item:hover, .nav-item:active { background: rgba(255, 255, 255, 0.06); color: #fff; transform: none; }
+        .nav-item:focus-visible { outline: 3px dashed #e8f2fa; outline-offset: 4px; }
         .nav-item[aria-pressed="true"] { background: rgba(68, 170, 221, 0.14); border-color: rgba(68, 170, 221, 0.65); color: #8bd8ff; }
         .planet-thumbnail {
             width: 44px; height: 44px; border-radius: 50%; background-size: auto 100%; background-position: center;
@@ -228,6 +229,56 @@
             #quiz-overlay, #info-card { max-height: calc(100dvh - 268px); }
         }
         @media (prefers-reduced-motion: reduce) { .nav-item, .app-link { transition: none; } }
+        /* Phase 2B: nonmodal planet information, independent of the 3D camera. */
+        #info-card {
+            --info-limit: calc(100dvh - 168px);
+            top: 148px; right: var(--shell-gap); bottom: auto; left: auto; transform: none;
+            width: 350px; max-width: 380px; max-height: var(--info-limit); padding: 0; overflow: hidden;
+            background: rgba(8, 19, 34, 0.88); border: 1px solid rgba(139, 192, 221, 0.24); border-radius: 22px;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22); animation: info-panel-enter 200ms ease-out;
+        }
+        .info-header { display: flex; align-items: center; gap: 12px; min-height: 88px; box-sizing: border-box; padding: 18px 20px; }
+        .info-thumbnail { width: 46px; height: 46px; flex-shrink: 0; }
+        .info-heading { min-width: 0; }
+        #info-card h2 { color: #e8f2fa; font-size: 24px; font-weight: 600; line-height: 1.2; border: 0; padding: 0; margin: 0; }
+        .info-heading p { color: #a8bacd; font-size: 12px; margin: 5px 0 0; }
+        #info-card .close-btn {
+            position: static; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+            width: 44px; height: 44px; margin-left: auto; padding: 0; border: 1px solid transparent;
+            border-radius: 12px; background: transparent; color: #b4c5d6; cursor: pointer;
+            transition: background 160ms ease, color 160ms ease;
+        }
+        #info-card .close-btn:hover { background: rgba(68, 170, 221, 0.1); color: #8bd8ff; }
+        #info-card .close-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+        .info-content { box-sizing: border-box; max-height: calc(var(--info-limit) - 90px); padding: 0 22px 22px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #44aadd66 transparent; }
+        .planet-details { margin: 0; }
+        #info-card .data-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 12px; margin: 0; padding: 14px 0; border-bottom: 1px solid rgba(139, 192, 221, 0.1); font-size: 14px; line-height: 1.4; }
+        #info-card .label { color: #b4c5d6; }
+        #info-card .value { color: #e8f2fa; font-size: 15px; font-weight: 600; margin: 0; text-align: right; }
+        #info-card .fact-box { margin-top: 20px; padding: 16px; background: rgba(68, 170, 221, 0.07); border: 1px solid rgba(68, 170, 221, 0.16); border-radius: 14px; font-style: normal; font-size: 14px; line-height: 1.6; color: #dce8f2; }
+        .fact-heading { display: block; color: #8bd8ff; font-size: 12px; font-weight: 600; letter-spacing: 0.4px; margin-bottom: 8px; }
+        #planet-fact { margin: 0; }
+        @keyframes info-panel-enter { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes info-sheet-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        @media (min-width: 1600px) { #info-card { width: 380px; } }
+        @media (max-width: 1199px) and (min-width: 701px) {
+            #info-card { --info-limit: calc(100dvh - 140px); top: 128px; right: 12px; width: 320px; }
+            .info-content { padding: 0 18px 18px; }
+        }
+        @media (max-width: 700px) {
+            #info-card {
+                --info-limit: min(410px, calc(100dvh - 326px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+                top: auto; right: 12px; left: 12px; bottom: calc(154px + env(safe-area-inset-bottom));
+                width: auto; max-width: none; border-radius: 20px; animation-name: info-sheet-enter;
+            }
+            .info-header { padding: 16px 18px; }
+            .info-content { padding: 0 18px 18px; }
+            #info-card h2 { font-size: 22px; }
+            #info-card .data-row { padding: 12px 0; }
+            #info-card .fact-box { padding: 14px; margin-top: 16px; }
+        }
+        @media (prefers-reduced-motion: reduce) { #info-card { animation: none; } #info-card .close-btn { transition: none; } }
     </style>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -296,15 +347,30 @@
         </div>
     </div>
 
-    <div id="info-card">
-        <div class="close-btn" onclick="closePopup()">×</div>
-        <h2 id="planet-name">Planéta</h2>
-        <div class="data-row"><span class="label">Vzdialenosť:</span><span class="value" id="planet-dist"></span></div>
-        <div class="data-row"><span class="label">Priemer:</span><span class="value" id="planet-diam"></span></div>
-        <div class="data-row"><span class="label">Obežná doba:</span><span class="value" id="planet-orbit"></span></div>
-        <div class="data-row"><span class="label">Rotácia:</span><span class="value" id="planet-rotate"></span></div>
-        <div class="fact-box" id="planet-fact"></div>
-    </div>
+    <section id="info-card" aria-labelledby="planet-name">
+        <header class="info-header">
+            <span id="info-thumbnail" class="planet-thumbnail info-thumbnail" aria-hidden="true"></span>
+            <div class="info-heading">
+                <h2 id="planet-name">Planéta</h2>
+                <p>Slnečná sústava</p>
+            </div>
+            <button class="close-btn" type="button" onclick="closePopup()" aria-label="Zavrieť informácie o planéte">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
+        </header>
+        <div class="info-content" tabindex="0" aria-label="Údaje o vybranom telese">
+            <dl class="planet-details" aria-live="polite" aria-atomic="true">
+                <div class="data-row"><dt class="label">Vzdialenosť od Slnka</dt><dd class="value" id="planet-dist"></dd></div>
+                <div class="data-row"><dt class="label">Priemer</dt><dd class="value" id="planet-diam"></dd></div>
+                <div class="data-row"><dt class="label">Obežná doba</dt><dd class="value" id="planet-orbit"></dd></div>
+                <div class="data-row"><dt class="label">Rotácia</dt><dd class="value" id="planet-rotate"></dd></div>
+            </dl>
+            <div class="fact-box">
+                <span class="fact-heading">Zaujímavosť</span>
+                <p id="planet-fact" aria-live="polite"></p>
+            </div>
+        </div>
+    </section>
 
     <script>
         // CONFIG: Moons Added!
@@ -854,16 +920,43 @@
         }
 
         function showPopup(data) {
+            if (isQuizMode || isQuizResults) return;
+            const panel = document.getElementById('info-card');
+            const switchingPlanet = panel.style.display === 'block' && document.getElementById('planet-name').innerText !== data.name;
+            document.getElementById('info-thumbnail').style.backgroundImage = `url('${data.texture}')`;
             document.getElementById('planet-name').innerText = data.name;
             document.getElementById('planet-dist').innerText = data.realDist;
             document.getElementById('planet-diam').innerText = data.realDiam;
             document.getElementById('planet-orbit').innerText = data.orbit;
             document.getElementById('planet-rotate').innerText = data.rotation;
             document.getElementById('planet-fact').innerText = data.fact;
-            document.getElementById('info-card').style.display = 'block';
+            panel.style.display = 'block';
+            if (switchingPlanet) {
+                const content = panel.querySelector('.info-content');
+                content.scrollTop = 0;
+                content.getAnimations().forEach(animation => animation.cancel());
+                if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    content.animate([{ opacity: 0.65 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' });
+                }
+            }
         }
 
-        function closePopup() { document.getElementById('info-card').style.display = 'none'; }
+        function closePopup() {
+            const panel = document.getElementById('info-card');
+            const restoreFocus = panel.contains(document.activeElement);
+            panel.style.display = 'none';
+            if (restoreFocus) {
+                const selected = document.getElementById('planet-name').innerText;
+                const button = Array.from(document.querySelectorAll('#planet-nav .nav-item')).find(item => item.dataset.planet === selected);
+                if (button) button.focus({ preventScroll: true });
+            }
+        }
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && document.getElementById('info-card').style.display === 'block' && !isQuizMode && !isQuizResults) {
+                closePopup();
+            }
+        });
 
         function cancelQuizTimer() {
             clearTimeout(quizTimer);
