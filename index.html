@@ -279,6 +279,48 @@
             #info-card .fact-box { padding: 14px; margin-top: 16px; }
         }
         @media (prefers-reduced-motion: reduce) { #info-card { animation: none; } #info-card .close-btn { transition: none; } }
+        /* Phase 2C: floating simulation controls and compact mobile information. */
+        .process-brand { margin-top: auto; }
+        .simulation-controls {
+            position: fixed; left: calc(50% + var(--sidebar-width) / 2); bottom: calc(20px + env(safe-area-inset-bottom));
+            transform: translateX(-50%); z-index: 40; margin: 0; padding: 10px; display: flex; align-items: center; gap: 12px;
+            width: max-content; max-width: calc(100% - var(--sidebar-width) - 64px); box-sizing: border-box;
+            border: 1px solid rgba(139,192,221,.24); border-radius: 20px; background: rgba(8,19,34,.88);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        }
+        body:not(.is-ready) .simulation-controls { visibility: hidden; }
+        .simulation-button { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 14px; border: 1px solid rgba(139,192,221,.2); border-radius: 13px; color: #dce8f2; background: rgba(255,255,255,.03); cursor: pointer; font-size: 14px; }
+        .simulation-button:hover { background: rgba(255,255,255,.08); }
+        .simulation-button svg { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+        .play-button { color: #8bd8ff; border-color: rgba(68,170,221,.45); background: rgba(68,170,221,.13); min-width: 136px; }
+        #orbit-visibility[aria-pressed="true"] { color: #8bd8ff; border-color: rgba(68,170,221,.4); }
+        .speed-control { display: flex; align-items: center; gap: 10px; color: #b4c5d6; font-size: 12px; }
+        .speed-control select { min-height: 48px; width: 74px; padding: 8px; border-radius: 12px; border: 1px solid rgba(139,192,221,.3); background: #102437; color: #e8f2fa; font: inherit; font-size: 15px; cursor: pointer; }
+        .speed-control select:focus-visible { outline: 3px solid #8bd8ff; outline-offset: 4px; }
+        #info-expand, .mobile-info-caption { display: none; }
+        #info-card { --info-limit: calc(100dvh - 264px); }
+        @media (max-width: 1199px) and (min-width: 701px) {
+            #info-card { --info-limit: calc(100dvh - 244px); }
+            .simulation-controls { gap: 8px; }
+            .simulation-button { padding: 10px; font-size: 13px; }
+            .speed-control { gap: 6px; }
+        }
+        @media (max-width: 700px) {
+            .simulation-controls { left: 12px; right: 12px; bottom: calc(98px + env(safe-area-inset-bottom)); transform: none; width: auto; max-width: none; height: 110px; padding: 8px; gap: 6px; display: grid; grid-template-columns: 1fr 1fr; border-radius: 18px; }
+            .simulation-button { min-width: 0; min-height: 44px; padding: 6px; gap: 6px; font-size: 12px; }
+            .simulation-button svg { width: 19px; height: 19px; }
+            .speed-control { justify-content: center; gap: 6px; font-size: 11px; }
+            .speed-control select { min-height: 44px; width: 68px; }
+            #info-card { --info-limit: min(410px, calc(100dvh - 380px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); bottom: calc(220px + env(safe-area-inset-bottom)); }
+            #info-card:not(.mobile-expanded) .info-content { display: none; }
+            #info-expand { display: block; min-width: 48px; min-height: 44px; padding: 6px; border: 1px solid rgba(68,170,221,.35); border-radius: 12px; background: rgba(68,170,221,.1); color: #8bd8ff; font: inherit; font-size: 12px; cursor: pointer; }
+            .info-header { gap: 8px; padding: 12px; }
+            .info-heading p { font-size: 10px; }
+            .desktop-info-caption { display: none; }
+            .mobile-info-caption { display: inline; }
+            #info-card h2 { font-size: 20px; }
+            .info-thumbnail { width: 36px; height: 36px; }
+        }
     </style>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -321,15 +363,15 @@
                 <span><strong>Kvíz</strong><small>Otestuj vedomosti</small></span>
             </button>
         </nav>
-        <div class="simulation-controls">
-            <div class="button-group">
-                <button id="pause-btn" class="menu-btn" type="button" onclick="toggleOrbit()">Orbity: ZAPNUTÉ</button>
-                <button class="menu-btn" type="button" onclick="resetCamera()">Resetovať pohľad</button>
-            </div>
-            <p class="interaction-hint">Ťahaním otáčajte pohľad.<br>Kolieskom alebo gestom približujte.<br>Vyberte planétu a objavujte.</p>
-        </div>
         <div class="process-brand">Process<span>AI</span></div>
     </aside>
+
+    <section class="simulation-controls" aria-label="Ovládanie simulácie">
+        <button id="pause-btn" class="simulation-button play-button" type="button" onclick="toggleOrbit()" aria-label="Pozastaviť pohyb" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="play-icon" d="M8 5v14M16 5v14"/></svg><span id="play-label">Pozastaviť</span></button>
+        <label class="speed-control" for="simulation-speed"><span>Rýchlosť pohybu</span><select id="simulation-speed" onchange="simulationSpeed = Number(this.value)" title="Násobok pohybu simulácie, nie skutočný astronomický čas"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></label>
+        <button class="simulation-button" type="button" onclick="resetCamera()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>Celá sústava</span></button>
+        <button id="orbit-visibility" class="simulation-button" type="button" onclick="toggleOrbitVisibility()" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="2"/></svg><span>Skryť dráhy</span></button>
+    </section>
 
     <section id="quiz-overlay" aria-label="Kvíz o planétach">
         <div id="quiz-question" aria-live="polite">Načítavam...</div>
@@ -352,13 +394,14 @@
             <span id="info-thumbnail" class="planet-thumbnail info-thumbnail" aria-hidden="true"></span>
             <div class="info-heading">
                 <h2 id="planet-name">Planéta</h2>
-                <p>Slnečná sústava</p>
+                <p><span class="desktop-info-caption">Slnečná sústava</span><span class="mobile-info-caption">Viac informácií</span></p>
             </div>
+            <button id="info-expand" type="button" aria-expanded="false" aria-controls="info-content" onclick="toggleInfoSheet()">Viac</button>
             <button class="close-btn" type="button" onclick="closePopup()" aria-label="Zavrieť informácie o planéte">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
             </button>
         </header>
-        <div class="info-content" tabindex="0" aria-label="Údaje o vybranom telese">
+        <div id="info-content" class="info-content" tabindex="0" aria-label="Údaje o vybranom telese">
             <dl class="planet-details" aria-live="polite" aria-atomic="true">
                 <div class="data-row"><dt class="label">Vzdialenosť od Slnka</dt><dd class="value" id="planet-dist"></dd></div>
                 <div class="data-row"><dt class="label">Priemer</dt><dd class="value" id="planet-diam"></dd></div>
@@ -400,6 +443,9 @@
         let satellites = []; // Stores all moons
         let isQuizMode = false, isQuizResults = false, quizQueue = [], quizIndex = 0, score = 0, quizTarget = null, isWaiting = false;
         let quizTimer = null, quizSession = 0, orbitsBeforeQuiz = true;
+        let simulationSpeed = 1;
+        const orbitLines = [];
+        let areOrbitLinesVisible = true;
         let areOrbitsActive = true; 
         let touchStartX = 0, touchStartY = 0;
         
@@ -795,21 +841,49 @@
                     const orbitLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitCurve.getPoints(128)), new THREE.LineBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.3 }));
                     orbitLine.rotation.x = Math.PI / 2;
                     scene.add(orbitLine);
+                    orbitLines.push(orbitLine);
                 }
             });
         }
 
         function toggleOrbit() {
             areOrbitsActive = !areOrbitsActive;
-            const btn = document.getElementById('pause-btn');
-            if (areOrbitsActive) {
-                btn.innerText = "Orbity: ZAPNUTÉ";
-                btn.classList.remove('active');
-            } else {
-                btn.innerText = "Orbity: POZASTAVENÉ";
-                btn.classList.add('active');
-            }
+            syncSimulationControls();
         }
+
+        function syncSimulationControls() {
+            document.getElementById('pause-btn').setAttribute('aria-pressed', String(!areOrbitsActive));
+            document.getElementById('pause-btn').setAttribute('aria-label', areOrbitsActive ? 'Pozastaviť pohyb' : 'Spustiť pohyb');
+            document.getElementById('play-label').textContent = areOrbitsActive ? 'Pozastaviť' : 'Spustiť';
+            document.getElementById('play-icon').setAttribute('d', areOrbitsActive ? 'M8 5v14M16 5v14' : 'm8 5 11 7-11 7Z');
+        }
+
+        function toggleOrbitVisibility() {
+            areOrbitLinesVisible = !areOrbitLinesVisible;
+            orbitLines.forEach(line => { line.visible = areOrbitLinesVisible; });
+            const button = document.getElementById('orbit-visibility');
+            button.setAttribute('aria-pressed', String(areOrbitLinesVisible));
+            button.querySelector('span').textContent = areOrbitLinesVisible ? 'Skryť dráhy' : 'Zobraziť dráhy';
+        }
+
+        const mobileInfoLayout = window.matchMedia('(max-width: 700px)');
+        function syncInfoSheet() {
+            const expanded = document.getElementById('info-card').classList.contains('mobile-expanded');
+            const content = document.getElementById('info-content');
+            const button = document.getElementById('info-expand');
+            if (mobileInfoLayout.matches && !expanded && content.contains(document.activeElement)) button.focus();
+            content.inert = mobileInfoLayout.matches && !expanded;
+            button.setAttribute('aria-expanded', String(expanded));
+            button.textContent = expanded ? 'Menej' : 'Viac';
+            document.querySelector('.mobile-info-caption').textContent = expanded ? 'Podrobnosti o planéte' : 'Viac informácií';
+            button.setAttribute('aria-label', expanded ? 'Zbaliť informácie' : 'Rozbaliť informácie');
+        }
+        function toggleInfoSheet() {
+            document.getElementById('info-card').classList.toggle('mobile-expanded');
+            syncInfoSheet();
+        }
+        mobileInfoLayout.addEventListener('change', syncInfoSheet);
+        syncInfoSheet();
 
         function animate() {
             requestAnimationFrame(animate);
@@ -839,7 +913,7 @@
                 }
 
                 if (areOrbitsActive && !isQuizMode && data.distance3D > 0) {
-                    mesh.userData.angle -= data.speed * 25 * delta; 
+                    mesh.userData.angle -= data.speed * 25 * delta * simulationSpeed;
                     mesh.position.x = Math.cos(mesh.userData.angle) * data.distance3D;
                     mesh.position.z = Math.sin(mesh.userData.angle) * data.distance3D;
                 }
@@ -853,7 +927,7 @@
                 moon.rotation.y += 0.01 * delta * 60;
 
                 if (areOrbitsActive && !isQuizMode) {
-                    data.angle -= data.speed * 25 * delta; 
+                    data.angle -= data.speed * 25 * delta * simulationSpeed;
                 }
                 
                 moon.position.x = parent.position.x + Math.cos(data.angle) * data.distance;
@@ -893,7 +967,7 @@
 
         function checkIntersection(x, y) {
             const el = document.elementFromPoint(x, y);
-            if (el && (el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav'))) return;
+            if (el && (el.closest('.simulation-controls') || el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav'))) return;
             
             if (isWaiting || isQuizResults) return;
 
@@ -930,6 +1004,8 @@
             document.getElementById('planet-orbit').innerText = data.orbit;
             document.getElementById('planet-rotate').innerText = data.rotation;
             document.getElementById('planet-fact').innerText = data.fact;
+            if (panel.style.display !== 'block') panel.classList.remove('mobile-expanded');
+            syncInfoSheet();
             panel.style.display = 'block';
             if (switchingPlanet) {
                 const content = panel.querySelector('.info-content');
@@ -1054,6 +1130,7 @@
             document.body.classList.toggle('is-quiz', isQuizMode || isQuizResults);
             const sidebar = document.getElementById('side-ui');
             sidebar.inert = !ready || isQuizResults;
+            document.querySelector('.simulation-controls').inert = !ready || isQuizMode || isQuizResults;
             document.getElementById('explore-nav').setAttribute('aria-current', isQuizMode || isQuizResults ? 'false' : 'page');
             document.getElementById('quiz-nav').setAttribute('aria-current', isQuizMode || isQuizResults ? 'page' : 'false');
             if (document.getElementById('info-card').style.display === 'block') {
