@@ -969,7 +969,6 @@
                 const damping = controls.enableDamping, minimum = controls.minDistance, maximum = controls.maxDistance;
                 controls.minDistance = 0; controls.maxDistance = Infinity;
                 controls.enableDamping = false; controls.update(); controls.enableDamping = damping;
-                camera.setViewOffset(innerWidth, innerHeight, focusViewOffset.x, focusViewOffset.y, innerWidth, innerHeight);
                 camera.position.copy(position); controls.target.copy(target); controls.update();
                 controls.minDistance = minimum; controls.maxDistance = maximum;
             }
@@ -996,12 +995,79 @@
             return focusRadius(mesh) / Math.sin(angle);
         }
 
-        function focusPlanet(mesh) {
-            cancelCameraTransition();
-            const direction = camera.position.clone().sub(controls.target).normalize();
+        function backgroundViewPenalty(mesh, direction) {
+            let penalty = 0;
+            for (const other of planets) {
+                if (other === mesh || other.userData.radius < mesh.userData.radius * 2) continue;
+                const separation = other.position.clone().sub(mesh.position);
+                const distance = separation.length();
+                if (distance > 0 && other.userData.radius / distance > 0.02) {
+                    const alignment = -separation.normalize().dot(direction);
+                    penalty += Math.max(0, (alignment - 0.94) / 0.06);
+                }
+            }
+            return penalty;
+        }
+
+        function preferredFocusDirection(mesh, previousDirection) {
+            // Sun preserves the Phase 3A direction and its existing radius/framing.
+            if (mesh.userData.name === 'Slnko') {
+                previousDirection.y = Math.max(previousDirection.y, 0.18);
+                return previousDirection.normalize();
+            }
+            mesh.updateWorldMatrix(true, true);
+            const axis = new THREE.Vector3(0, 1, 0).transformDirection(mesh.matrixWorld);
+            const sun = planets.find(body => body.userData.name === 'Slnko');
+            const sunlight = sun.position.clone().sub(mesh.position).normalize();
+            const elevation = THREE.MathUtils.degToRad(mobileInfoLayout.matches ? 18 : 20);
+            const ring = mesh.userData.hasRings && mesh.children.find(child => child.isMesh && child.geometry.type === 'PlaneGeometry');
+            let best = null, bestScore = -Infinity;
+            function consider(direction) {
+                const score = direction.dot(sunlight) + 0.12 * direction.dot(previousDirection)
+                    - 0.35 * Math.abs(direction.dot(axis) - Math.sin(elevation))
+                    - backgroundViewPenalty(mesh, direction);
+                if (score > bestScore) { bestScore = score; best = direction; }
+            }
+            if (ring) {
+                // PlaneGeometry's local normal is +Z; include all parent/child transforms.
+                const normal = new THREE.Vector3(0, 0, 1).transformDirection(ring.matrixWorld);
+                const inPlane = sunlight.clone().addScaledVector(normal, -sunlight.dot(normal));
+                if (inPlane.lengthSq() < 0.0001) inPlane.copy(axis).addScaledVector(normal, -axis.dot(normal));
+                if (inPlane.lengthSq() < 0.0001) inPlane.set(1, 0, 0).addScaledVector(normal, -normal.x);
+                inPlane.normalize();
+                const tangent = new THREE.Vector3().crossVectors(normal, inPlane).normalize();
+                const ringElevation = THREE.MathUtils.degToRad(30);
+                for (const azimuth of [-60, -30, 0, 30, 60]) {
+                    const angle = THREE.MathUtils.degToRad(azimuth);
+                    for (const side of [-1, 1]) {
+                        consider(inPlane.clone().multiplyScalar(Math.cos(angle) * Math.cos(ringElevation))
+                            .addScaledVector(tangent, Math.sin(angle) * Math.cos(ringElevation))
+                            .addScaledVector(normal, side * Math.sin(ringElevation)).normalize());
+                    }
+                }
+            } else {
+                const equatorialSun = sunlight.clone().addScaledVector(axis, -sunlight.dot(axis));
+                if (equatorialSun.lengthSq() < 0.0001) equatorialSun.set(1, 0, 0).addScaledVector(axis, -axis.x);
+                equatorialSun.normalize();
+                const tangent = new THREE.Vector3().crossVectors(axis, equatorialSun).normalize();
+                const azimuth = THREE.MathUtils.degToRad(mesh.userData.name === 'Zem' ? (mobileInfoLayout.matches ? 30 : 35) : 25);
+                for (const side of [-1, 1]) {
+                    consider(equatorialSun.clone().multiplyScalar(Math.cos(azimuth) * Math.cos(elevation))
+                        .addScaledVector(tangent, side * Math.sin(azimuth) * Math.cos(elevation))
+                        .addScaledVector(axis, Math.sin(elevation)).normalize());
+                }
+            }
+            return best;
+        }
+
+        function focusPlanet(mesh, explicitSelection = true) {
+            // Layout changes preserve the user's orientation, including during a transition.
+            const direction = !explicitSelection && cameraTransition
+                ? cameraTransition.end.clone().sub(cameraTransition.targetEnd).normalize()
+                : camera.position.clone().sub(controls.target).normalize();
             if (direction.lengthSq() === 0) direction.set(0, 0.4, 1).normalize();
-            // A shallow elevation keeps Saturn's rings readable without spinning the camera.
-            direction.y = Math.max(direction.y, 0.18); direction.normalize();
+            cancelCameraTransition();
+            if (explicitSelection) direction.copy(preferredFocusDirection(mesh, direction));
             focusedBody = mesh; focusLastPosition.copy(mesh.position);
             const distance = frameFocusedBody(mesh);
             controls.minDistance = focusRadius(mesh) * 1.15;
@@ -1043,7 +1109,7 @@
                 }
                 if (cameraFrameDirty) {
                     cameraFrameDirty = false;
-                    focusPlanet(focusedBody);
+                    focusPlanet(focusedBody, false);
                 }
             }
             const motion = cameraTransition;
@@ -1083,7 +1149,7 @@
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            if (focusedBody) focusPlanet(focusedBody);
+            if (focusedBody) focusPlanet(focusedBody, false);
         }
 
         function resetCamera() {
