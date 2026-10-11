@@ -665,6 +665,20 @@
             scene.add(starSphere);
         }
 
+        function applyGasGiantSurfaceCorrection(material) {
+            material.roughness = 1;
+            material.metalness = 0;
+            material.onBeforeCompile = shader => {
+                // Three.js r128: compress accumulated linear light before fog and sRGB output.
+                // Local to Jupiter/Saturn; the renderer remains on NoToneMapping.
+                shader.fragmentShader = shader.fragmentShader.replace(/vec3 outgoingLight =[^;]+;/, lightingSum => `${lightingSum}
+                    outgoingLight *= 0.35;
+                    outgoingLight = outgoingLight / (vec3(1.0) + outgoingLight);
+                `);
+            };
+            material.customProgramCacheKey = () => 'gas-giant-surface-c4-v1';
+        }
+
         // Earth-only rendering; sunlight follows the existing Sun at the origin.
         function createEarthMaterial(data, textureLoader, maxAnisotropy) {
             const black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
@@ -787,6 +801,7 @@
                 // OPTIMIZATION: Reduced segments from 128 to 64 to lower GPU load
                 const geometry = new THREE.SphereGeometry(data.radius, 64, 64);
                 let material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.05 });
+                if (data.name === "Jupiter" || data.name === "Saturn") applyGasGiantSurfaceCorrection(material);
                 const onTexError = () => { material.map = generateOrganicTexture(data); material.needsUpdate = true; };
                 
                 if (data.name === "Zem") {
