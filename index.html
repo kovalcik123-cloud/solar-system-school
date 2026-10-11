@@ -553,6 +553,13 @@
 
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true; controls.dampingFactor = 0.05;
+            controls.addEventListener('start', cancelCameraTransition);
+            renderer.domElement.addEventListener('pointerdown', event => {
+                cameraPointerStart.set(event.clientX, event.clientY); cameraPointerDragged = false;
+            });
+            renderer.domElement.addEventListener('pointermove', event => {
+                if (event.buttons && Math.hypot(event.clientX - cameraPointerStart.x, event.clientY - cameraPointerStart.y) > 6) cameraPointerDragged = true;
+            });
             controls.minDistance = 20; controls.maxDistance = 500;
 
             const hemiLight = new THREE.HemisphereLight( 0xddeeff, 0x0f0e0d, 0.6 );
@@ -611,7 +618,7 @@
                 } else {
                     if (areOrbitsActive) toggleOrbit();
                     showPopup(targetMesh.userData);
-                    controls.target.copy(targetMesh.position);
+                    focusPlanet(targetMesh);
                 }
             }
         }
@@ -935,16 +942,158 @@
                 moon.position.y = parent.position.y; 
             });
             
+            updateCameraMotion(now);
+            const minimum = controls.minDistance, maximum = controls.maxDistance;
+            if (cameraTransition) { controls.minDistance = 0; controls.maxDistance = Infinity; }
             controls.update();
+            controls.minDistance = minimum; controls.maxDistance = maximum;
             renderer.render(scene, camera);
         }
+
+        // Camera-only focus state: a single transition, no timers or deferred callbacks.
+        let cameraTransition = null, focusedBody = null, cameraQuizState = false;
+        const reducedCameraMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const focusLastPosition = new THREE.Vector3();
+        const cameraFollowDelta = new THREE.Vector3();
+        const collisionOffset = new THREE.Vector3();
+        const cameraPointerStart = new THREE.Vector2();
+        let cameraPointerDragged = false;
+        let cameraFrameDirty = false;
+        const focusViewOffset = new THREE.Vector2();
+
+        function cancelCameraTransition() {
+            cameraTransition = null;
+            // Flush residual damping so a superseded transition cannot inherit a drag.
+            if (controls) {
+                const position = camera.position.clone(), target = controls.target.clone();
+                const damping = controls.enableDamping, minimum = controls.minDistance, maximum = controls.maxDistance;
+                controls.minDistance = 0; controls.maxDistance = Infinity;
+                controls.enableDamping = false; controls.update(); controls.enableDamping = damping;
+                camera.setViewOffset(innerWidth, innerHeight, focusViewOffset.x, focusViewOffset.y, innerWidth, innerHeight);
+                camera.position.copy(position); controls.target.copy(target); controls.update();
+                controls.minDistance = minimum; controls.maxDistance = maximum;
+            }
+        }
+
+        function focusRadius(mesh) {
+            return mesh.userData.radius * (mesh.userData.hasRings ? 2.25 : mesh.userData.name === 'Slnko' ? 1.3 : 1.06);
+        }
+
+        function frameFocusedBody(mesh) {
+            const nav = document.getElementById('planet-nav').getBoundingClientRect();
+            const panel = document.getElementById('info-card');
+            const info = panel.getBoundingClientRect();
+            const toolbar = document.querySelector('.simulation-controls').getBoundingClientRect();
+            const mobile = mobileInfoLayout.matches;
+            const left = mobile ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
+            const right = !mobile && panel.style.display === 'block' ? info.left - 20 : innerWidth - 20;
+            const top = nav.bottom + 12;
+            const bottom = mobile && panel.style.display === 'block' ? info.top - 12 : toolbar.top - 20;
+            const width = Math.max(60, right - left), height = Math.max(60, bottom - top);
+            focusViewOffset.set(innerWidth / 2 - (left + width / 2), innerHeight / 2 - (top + height / 2));
+            const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+            const angle = Math.atan(Math.min(tangent * height / innerHeight, tangent * camera.aspect * width / innerWidth) * 0.78);
+            return focusRadius(mesh) / Math.sin(angle);
+        }
+
+        function focusPlanet(mesh) {
+            cancelCameraTransition();
+            const direction = camera.position.clone().sub(controls.target).normalize();
+            if (direction.lengthSq() === 0) direction.set(0, 0.4, 1).normalize();
+            // A shallow elevation keeps Saturn's rings readable without spinning the camera.
+            direction.y = Math.max(direction.y, 0.18); direction.normalize();
+            focusedBody = mesh; focusLastPosition.copy(mesh.position);
+            const distance = frameFocusedBody(mesh);
+            controls.minDistance = focusRadius(mesh) * 1.15;
+            controls.maxDistance = Math.max(500, distance * 3);
+            beginCameraTransition(mesh.position.clone().addScaledVector(direction, distance), mesh.position);
+        }
+
+        function beginCameraTransition(position, target, immediate = false) {
+            cameraTransition = null;
+            if (immediate || reducedCameraMotion.matches) {
+                camera.setViewOffset(innerWidth, innerHeight, focusViewOffset.x, focusViewOffset.y, innerWidth, innerHeight);
+                camera.position.copy(position); controls.target.copy(target); controls.update();
+                return;
+            }
+            // Only lift obstructed paths; repeated selection and reframing stay quiet.
+            const start = camera.position.clone();
+            const directPath = new THREE.Line3(start, position), clearancePoint = new THREE.Vector3();
+            const obstructed = planets.some(mesh => {
+                directPath.closestPointToPoint(mesh.position, true, clearancePoint);
+                return clearancePoint.distanceToSquared(mesh.position) < Math.pow(focusRadius(mesh) * 1.1, 2);
+            });
+            cameraTransition = {
+                start, end: position.clone(), targetStart: controls.target.clone(), targetEnd: target.clone(),
+                viewStart: new THREE.Vector2(camera.view?.enabled ? camera.view.offsetX : 0, camera.view?.enabled ? camera.view.offsetY : 0), viewEnd: focusViewOffset.clone(),
+                started: performance.now(), duration: 1250,
+                lift: obstructed ? Math.max(0, 70 - Math.min(start.y, position.y)) : 0
+            };
+        }
+
+        function updateCameraMotion(now) {
+            if (isQuizMode || isQuizResults) return;
+            if (focusedBody) {
+                cameraFollowDelta.copy(focusedBody.position).sub(focusLastPosition);
+                focusLastPosition.copy(focusedBody.position);
+                if (cameraTransition) {
+                    cameraTransition.end.add(cameraFollowDelta); cameraTransition.targetEnd.add(cameraFollowDelta);
+                } else {
+                    camera.position.add(cameraFollowDelta); controls.target.add(cameraFollowDelta);
+                }
+                if (cameraFrameDirty) {
+                    cameraFrameDirty = false;
+                    focusPlanet(focusedBody);
+                }
+            }
+            const motion = cameraTransition;
+            if (motion) {
+                const t = Math.min(1, Math.max(0, (now - motion.started) / motion.duration));
+                const eased = t * t * (3 - 2 * t);
+                camera.position.lerpVectors(motion.start, motion.end, eased);
+                camera.position.y += 4 * eased * (1 - eased) * motion.lift;
+                controls.target.lerpVectors(motion.targetStart, motion.targetEnd, eased);
+                camera.setViewOffset(innerWidth, innerHeight, THREE.MathUtils.lerp(motion.viewStart.x, motion.viewEnd.x, eased), THREE.MathUtils.lerp(motion.viewStart.y, motion.viewEnd.y, eased), innerWidth, innerHeight);
+                if (t === 1) cameraTransition = null;
+            }
+            // A final geometry guard also protects rapid switches and manual zooming.
+            for (const mesh of planets) {
+                collisionOffset.copy(camera.position).sub(mesh.position);
+                const safeRadius = focusRadius(mesh) * 1.1;
+                if (collisionOffset.lengthSq() < safeRadius * safeRadius) {
+                    if (collisionOffset.lengthSq() < 0.0001) collisionOffset.set(0, 1, 0);
+                    collisionOffset.setLength(safeRadius);
+                    camera.position.copy(mesh.position).add(collisionOffset);
+                }
+            }
+        }
+
+        function syncQuizCamera() {
+            if (!controls) return;
+            const quiz = isQuizMode || isQuizResults;
+            if (quiz && !cameraQuizState) {
+                cameraQuizState = true;
+                resetCamera(); // Immediate overview for quiz answers; no focus animation survives.
+            }
+            cameraQuizState = quiz;
+        }
+        const cameraLayoutObserver = new ResizeObserver(() => { cameraFrameDirty = true; });
+        ['planet-nav', 'info-card', 'side-ui'].forEach(id => cameraLayoutObserver.observe(document.getElementById(id)));
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            if (focusedBody) focusPlanet(focusedBody);
         }
 
-        function resetCamera() { controls.target.set(0, 0, 0); camera.position.set(0, 100, 250); closePopup(); }
+        function resetCamera() {
+            cancelCameraTransition();
+            focusedBody = null;
+            controls.minDistance = 20; controls.maxDistance = 500;
+            focusViewOffset.set(0, 0);
+            closePopup();
+            beginCameraTransition(new THREE.Vector3(0, 100, 250), new THREE.Vector3(), cameraQuizState);
+        }
 
         function onTouchStart(e) {
             touchStartX = e.changedTouches[0].clientX;
@@ -952,6 +1101,7 @@
         }
 
         function onTouchEnd(e) {
+            if (cameraPointerDragged) { e.preventDefault(); return; }
             const dx = e.changedTouches[0].clientX - touchStartX;
             const dy = e.changedTouches[0].clientY - touchStartY;
             const dist = Math.sqrt(dx*dx + dy*dy);
@@ -962,6 +1112,7 @@
         }
 
         function onMouseClick(e) {
+            if (cameraPointerDragged) return;
             checkIntersection(e.clientX, e.clientY);
         }
 
@@ -982,13 +1133,13 @@
                 
                 // If user clicks a moon, focus on parent for now (simplifies UI)
                 const data = target.userData.parent ? target.userData.parent.userData : target.userData;
-                const pos = target.userData.parent ? target.userData.parent.position : target.position;
+                const focusMesh = target.userData.parent || target;
 
                 if (isQuizMode) handleQuizPick(data);
                 else { 
                     if (areOrbitsActive) toggleOrbit(); 
                     showPopup(data); 
-                    controls.target.copy(pos); 
+                    focusPlanet(focusMesh);
                 }
             }
         }
@@ -1128,6 +1279,7 @@
             const ready = document.getElementById('gatekeeper').style.display === 'none';
             document.body.classList.toggle('is-ready', ready);
             document.body.classList.toggle('is-quiz', isQuizMode || isQuizResults);
+            syncQuizCamera();
             const sidebar = document.getElementById('side-ui');
             sidebar.inert = !ready || isQuizResults;
             document.querySelector('.simulation-controls').inert = !ready || isQuizMode || isQuizResults;
