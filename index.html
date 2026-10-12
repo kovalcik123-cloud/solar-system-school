@@ -734,6 +734,33 @@
             material.customProgramCacheKey = () => 'gas-giant-surface-c4-v1';
         }
 
+        const planetSurfaceCorrections = {
+            'Merkúr': { gain: 0.52, shoulder: 0.80 },
+            'Venuša': { gain: 0.45, shoulder: 1.00 },
+            'Mars': { gain: 0.60, shoulder: 0.70 },
+            'Urán': { gain: 0.48, shoulder: 1.00 },
+            'Neptún': { gain: 0.80, shoulder: 0.85 }
+        };
+
+        function applyPlanetSurfaceCorrection(material, parameters) {
+            material.roughness = 1;
+            material.metalness = 0;
+            material.onBeforeCompile = shader => {
+                if (!material.map) return; // Reuse the stock shader while the texture loads.
+                shader.uniforms.surfaceGain = { value: parameters.gain };
+                shader.uniforms.surfaceShoulder = { value: parameters.shoulder };
+                shader.fragmentShader = 'uniform float surfaceGain; uniform float surfaceShoulder;\n' + shader.fragmentShader;
+                // Accumulated linear light, before fog and sRGB output. No global tone mapping.
+                shader.fragmentShader = shader.fragmentShader.replace(/vec3 outgoingLight =[^;]+;/, lightingSum => `${lightingSum}
+                    outgoingLight *= surfaceGain;
+                    outgoingLight /= vec3(1.0) + surfaceShoulder * outgoingLight;
+                `);
+            };
+            // Parameters are uniforms: all five planets share this shader variant.
+            material.customProgramCacheKey = () => material.map
+                ? 'planet-surface-linear-v1' : THREE.Material.prototype.onBeforeCompile.toString();
+        }
+
         // Earth-only rendering; sunlight follows the existing Sun at the origin.
         function createEarthMaterial(data, textureLoader, maxAnisotropy) {
             const black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
@@ -857,6 +884,7 @@
                 const geometry = new THREE.SphereGeometry(data.radius, 64, 64);
                 let material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.05 });
                 if (data.name === "Jupiter" || data.name === "Saturn") applyGasGiantSurfaceCorrection(material);
+                if (planetSurfaceCorrections[data.name]) applyPlanetSurfaceCorrection(material, planetSurfaceCorrections[data.name]);
                 const onTexError = () => { material.map = generateOrganicTexture(data); material.needsUpdate = true; };
                 
                 if (data.name === "Zem") {
