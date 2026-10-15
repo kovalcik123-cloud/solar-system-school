@@ -369,7 +369,7 @@
     <section class="simulation-controls" aria-label="Ovládanie simulácie">
         <button id="pause-btn" class="simulation-button play-button" type="button" onclick="toggleOrbit()" aria-label="Pozastaviť pohyb" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="play-icon" d="M8 5v14M16 5v14"/></svg><span id="play-label">Pozastaviť</span></button>
         <label class="speed-control" for="simulation-speed"><span>Rýchlosť pohybu</span><select id="simulation-speed" onchange="simulationSpeed = Number(this.value)" title="Násobok pohybu simulácie, nie skutočný astronomický čas"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></label>
-        <button class="simulation-button" type="button" onclick="resetCamera()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>Celá sústava</span></button>
+        <button class="simulation-button" type="button" onclick="showSystemOverview()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>Celá sústava</span></button>
         <button id="orbit-visibility" class="simulation-button" type="button" onclick="toggleOrbitVisibility()" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="2"/></svg><span>Skryť dráhy</span></button>
     </section>
 
@@ -594,6 +594,7 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000005);
             scene.fog = new THREE.FogExp2(0x000005, 0.0012); 
+            normalFogDensity = scene.fog.density;
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
             camera.position.set(0, 100, 250);
@@ -608,7 +609,7 @@
 
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true; controls.dampingFactor = 0.05;
-            controls.addEventListener('start', cancelCameraTransition);
+            controls.addEventListener('start', () => { overviewActive = false; cancelCameraTransition(); });
             renderer.domElement.addEventListener('pointerdown', event => {
                 cameraPointerStart.set(event.clientX, event.clientY); cameraPointerDragged = false;
             });
@@ -1050,6 +1051,8 @@
 
         // Camera-only focus state: a single transition, no timers or deferred callbacks.
         let cameraTransition = null, focusedBody = null, cameraQuizState = false;
+        let overviewActive = false;
+        let normalFogDensity, cameraFogTransition = null;
         const reducedCameraMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
         const focusLastPosition = new THREE.Vector3();
         const cameraFollowDelta = new THREE.Vector3();
@@ -1061,6 +1064,8 @@
 
         function cancelCameraTransition() {
             cameraTransition = null;
+            // Keep a distant interrupted overview/focus transition from snapping to a smaller limit.
+            if (controls) controls.maxDistance = Math.max(controls.maxDistance, camera.position.distanceTo(controls.target) * 1.05);
             // Flush residual damping so a superseded transition cannot inherit a drag.
             if (controls) {
                 const position = camera.position.clone(), target = controls.target.clone();
@@ -1159,6 +1164,7 @@
         }
 
         function focusPlanet(mesh, explicitSelection = true) {
+            overviewActive = false;
             // Layout changes preserve the user's orientation, including during a transition.
             const direction = !explicitSelection && cameraTransition
                 ? cameraTransition.end.clone().sub(cameraTransition.targetEnd).normalize()
@@ -1169,12 +1175,24 @@
             focusedBody = mesh; focusLastPosition.copy(mesh.position);
             const distance = frameFocusedBody(mesh);
             controls.minDistance = focusRadius(mesh) * 1.15;
-            controls.maxDistance = Math.max(500, distance * 3);
+            controls.maxDistance = Math.max(500, distance * 3, camera.position.distanceTo(controls.target) * 1.05);
             beginCameraTransition(mesh.position.clone().addScaledVector(direction, distance), mesh.position);
+        }
+
+        // Only overview reduces fog; keep its optical depth near the normal startup view.
+        function setCameraFog(distance = null, immediate = false) {
+            const density = normalFogDensity * (distance === null ? 1 : Math.min(1, 300 / distance));
+            if (immediate || reducedCameraMotion.matches) {
+                scene.fog.density = density;
+                cameraFogTransition = null;
+            } else {
+                cameraFogTransition = { start: scene.fog.density, end: density, started: performance.now() };
+            }
         }
 
         function beginCameraTransition(position, target, immediate = false) {
             cameraTransition = null;
+            setCameraFog(overviewActive ? position.distanceTo(target) : null, immediate);
             if (immediate || reducedCameraMotion.matches) {
                 camera.setViewOffset(innerWidth, innerHeight, focusViewOffset.x, focusViewOffset.y, innerWidth, innerHeight);
                 camera.position.copy(position); controls.target.copy(target); controls.update();
@@ -1196,6 +1214,12 @@
         }
 
         function updateCameraMotion(now) {
+            if (cameraFogTransition) {
+                const fog = cameraFogTransition;
+                const t = Math.min(1, Math.max(0, (now - fog.started) / 1250));
+                scene.fog.density = THREE.MathUtils.lerp(fog.start, fog.end, t * t * (3 - 2 * t));
+                if (t === 1) cameraFogTransition = null;
+            }
             if (isQuizMode || isQuizResults) return;
             if (focusedBody) {
                 cameraFollowDelta.copy(focusedBody.position).sub(focusLastPosition);
@@ -1248,9 +1272,91 @@
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
             if (focusedBody) focusPlanet(focusedBody, false);
+            else if (overviewActive) showSystemOverview(false);
+        }
+
+        function showSystemOverview(explicit = true) {
+            if (isQuizMode || isQuizResults) return;
+            cancelCameraTransition();
+            focusedBody = null;
+            closePopup();
+            const nav = document.getElementById('planet-nav').getBoundingClientRect();
+            const bar = document.querySelector('.simulation-controls').getBoundingClientRect();
+            const left = mobileInfoLayout.matches ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
+            const right = innerWidth - 16, top = nav.bottom + 12, bottom = bar.top - 16;
+            const width = Math.max(64, right - left - 24), height = Math.max(64, bottom - top - 24);
+            const points = [];
+            for (const mesh of planets) {
+                let r = focusRadius(mesh);
+                const centers = [mesh.position];
+                const data = mesh.userData;
+                if (areOrbitsActive && !reducedCameraMotion.matches && data.distance3D > 0) {
+                    // Bound only the transition's short orbital arc, never the full orbit.
+                    const angularSpeed = data.speed * 25 * simulationSpeed;
+                    const steps = Math.max(1, Math.ceil(angularSpeed * 1.25 / (Math.PI / 18)));
+                    for (let i = 1; i <= steps + 1; i++) {
+                        // Include arrival plus one capped simulation delta (0.1s) for frame timing.
+                        const seconds = i <= steps ? 1.25 * i / steps : 1.35;
+                        const angle = data.angle - angularSpeed * seconds;
+                        centers.push(new THREE.Vector3(Math.cos(angle) * data.distance3D, mesh.position.y, Math.sin(angle) * data.distance3D));
+                    }
+                    // Enclose the arc between samples, not just its chord endpoints.
+                    const stepAngle = angularSpeed * Math.max(1.25 / steps, 0.1);
+                    r += data.distance3D * (1 - Math.cos(stepAngle / 2));
+                }
+                for (const center of centers) {
+                    for (const x of [-r, r]) for (const y of [-r, r]) for (const z of [-r, r]) {
+                        points.push(center.clone().add(new THREE.Vector3(x, y, z)));
+                    }
+                }
+            }
+            const scale = innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+            const currentDirection = cameraTransition ? cameraTransition.end.clone().sub(cameraTransition.targetEnd) : camera.position.clone().sub(controls.target);
+            const baseYaw = explicit ? 0 : Math.atan2(currentDirection.x, currentDirection.z);
+            const elevation = explicit ? 35 : THREE.MathUtils.radToDeg(Math.asin(currentDirection.clone().normalize().y));
+            let best = null;
+            for (const yawOffset of (explicit ? [0, -15, 15, -30, 30] : [0])) {
+                const yaw = baseYaw + THREE.MathUtils.degToRad(yawOffset), pitch = THREE.MathUtils.degToRad(elevation);
+                const direction = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+                const rightAxis = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+                const upAxis = new THREE.Vector3().crossVectors(direction, rightAxis);
+                const local = points.map(point => [point.dot(rightAxis), point.dot(upAxis), point.dot(direction)]);
+                const bounds = distance => {
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    for (const point of local) {
+                        const depth = distance - point[2];
+                        if (depth <= camera.near * 2) return null;
+                        const x = scale * point[0] / depth, y = -scale * point[1] / depth;
+                        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+                    }
+                    return { minX, maxX, minY, maxY };
+                };
+                const fits = distance => { const b = bounds(distance); return b && b.maxX - b.minX <= width && b.maxY - b.minY <= height; };
+                let lo = 1, hi = 500;
+                while (!fits(hi)) hi *= 1.5;
+                for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
+                const distance = hi * 1.04, b = bounds(distance), disks = [];
+                let overlaps = 0;
+                for (const mesh of planets) {
+                    const depth = distance - mesh.position.dot(direction);
+                    const disk = { x: scale * mesh.position.dot(rightAxis) / depth, y: -scale * mesh.position.dot(upAxis) / depth, r: scale * focusRadius(mesh) / depth };
+                    for (const other of disks) if (Math.hypot(disk.x - other.x, disk.y - other.y) < disk.r + other.r + 2) overlaps++;
+                    disks.push(disk);
+                }
+                const score = overlaps * 1000 + distance * 0.1 + Math.abs(yawOffset) * 0.1;
+                if (!best || score < best.score) best = { score, distance, direction, bounds: b };
+            }
+            focusViewOffset.set(innerWidth / 2 + (best.bounds.minX + best.bounds.maxX) / 2 - (left + right) / 2,
+                innerHeight / 2 + (best.bounds.minY + best.bounds.maxY) / 2 - (top + bottom) / 2);
+            controls.minDistance = 20;
+            controls.maxDistance = Math.max(500, best.distance * 2, camera.position.distanceTo(controls.target) * 1.05);
+            overviewActive = true;
+            beginCameraTransition(best.direction.multiplyScalar(best.distance), new THREE.Vector3());
         }
 
         function resetCamera() {
+            overviewActive = false;
             cancelCameraTransition();
             focusedBody = null;
             controls.minDistance = 20; controls.maxDistance = 500;
