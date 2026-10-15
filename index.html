@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Slnečná Sústava 3D (Školská Edícia)</title>
+    <link rel="stylesheet" href="learn.css">
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; touch-action: auto; }
         #canvas-container { width: 100vw; height: 100vh; display: block; z-index: 1; }
@@ -363,9 +364,9 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="11" ry="4.5" transform="rotate(-35 12 12)"/><path d="m18 3 1 2 2 1"/></svg>
                 <span><strong>Objavuj</strong><small>Slnečnú sústavu</small></span>
             </button>
-            <button class="app-link" type="button" disabled aria-label="Uč sa — Pripravujeme">
+            <button id="learn-nav" class="app-link" type="button" onclick="Learn.enter()">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Zm0 0v15"/></svg>
-                <span><strong>Uč sa</strong><small>Pripravujeme</small></span>
+                <span><strong>Uč sa</strong><small>Krátke objavné lekcie</small></span>
             </button>
             <button id="quiz-nav" class="app-link" type="button" onclick="startQuiz()">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0V3Zm0 2H3v3c0 3 2 4 5 4m9-7h4v3c0 3-2 4-5 4M12 13v5m-4 3h8m-6-3h4v3"/></svg>
@@ -398,6 +399,8 @@
         </div>
     </div>
 
+    <section id="learn-root" aria-labelledby="learn-heading" hidden inert></section>
+
     <section id="info-card" aria-labelledby="planet-name">
         <header class="info-header">
             <span id="info-thumbnail" class="planet-thumbnail info-thumbnail" aria-hidden="true"></span>
@@ -424,6 +427,8 @@
         </div>
     </section>
 
+    <script src="learn-content.sk.js"></script>
+    <script src="learn.js"></script>
     <script>
         // CONFIG: Moons Added!
         const planetData = [
@@ -1064,7 +1069,7 @@
             const layer = document.getElementById('planet-labels');
             const entries = [], world = new THREE.Vector3(), view = new THREE.Vector3(), projected = new THREE.Vector3();
             const ui = ['side-ui', 'planet-nav', 'info-card'].map(id => document.getElementById(id));
-            ui.push(document.querySelector('.simulation-controls'));
+            ui.push(document.querySelector('.simulation-controls'), document.getElementById('learn-root'));
             let requested = false, dirty = true, layout, occupied = [], order = [];
             const invalidate = () => { dirty = true; };
             const observer = new ResizeObserver(invalidate);
@@ -1239,14 +1244,15 @@
 
         function frameFocusedBody(mesh) {
             const nav = document.getElementById('planet-nav').getBoundingClientRect();
-            const panel = document.getElementById('info-card');
+            const panel = document.getElementById(Learn.active ? 'learn-root' : 'info-card');
             const info = panel.getBoundingClientRect();
             const toolbar = document.querySelector('.simulation-controls').getBoundingClientRect();
-            const mobile = mobileInfoLayout.matches;
-            const left = mobile ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
-            const right = !mobile && panel.style.display === 'block' ? info.left - 20 : innerWidth - 20;
+            const mobile = Learn.active ? matchMedia('(max-width: 900px)').matches : mobileInfoLayout.matches;
+            const left = mobileInfoLayout.matches ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
+            const visible = Learn.active || panel.style.display === 'block';
+            const right = !mobile && visible ? info.left - 20 : innerWidth - 20;
             const top = nav.bottom + 12;
-            const bottom = mobile && panel.style.display === 'block' ? info.top - 12 : toolbar.top - 20;
+            const bottom = mobile && visible ? info.top - 12 : toolbar.top - 20;
             const width = Math.max(60, right - left), height = Math.max(60, bottom - top);
             focusViewOffset.set(innerWidth / 2 - (left + width / 2), innerHeight / 2 - (top + height / 2));
             const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -1334,6 +1340,7 @@
             controls.minDistance = focusRadius(mesh) * 1.15;
             controls.maxDistance = Math.max(500, distance * 3, camera.position.distanceTo(controls.target) * 1.05);
             beginCameraTransition(mesh.position.clone().addScaledVector(direction, distance), mesh.position);
+            if (Learn.active) syncNavigationPresentation();
         }
 
         // Only overview reduces fog; keep its optical depth near the normal startup view.
@@ -1378,6 +1385,9 @@
                 if (t === 1) cameraFogTransition = null;
             }
             if (isQuizMode || isQuizResults) return;
+            if (cameraFrameDirty && overviewActive && Learn.active && Learn.inLesson) {
+                cameraFrameDirty = false; showSystemOverview(false);
+            }
             if (focusedBody) {
                 cameraFollowDelta.copy(focusedBody.position).sub(focusLastPosition);
                 focusLastPosition.copy(focusedBody.position);
@@ -1388,7 +1398,7 @@
                 }
                 if (cameraFrameDirty) {
                     cameraFrameDirty = false;
-                    focusPlanet(focusedBody, false);
+                    if (!Learn.active || Learn.inLesson) focusPlanet(focusedBody, false);
                 }
             }
             const motion = cameraTransition;
@@ -1423,13 +1433,13 @@
             cameraQuizState = quiz;
         }
         const cameraLayoutObserver = new ResizeObserver(() => { cameraFrameDirty = true; });
-        ['planet-nav', 'info-card', 'side-ui'].forEach(id => cameraLayoutObserver.observe(document.getElementById(id)));
+        ['planet-nav', 'info-card', 'side-ui', 'learn-root'].forEach(id => cameraLayoutObserver.observe(document.getElementById(id)));
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            if (focusedBody) focusPlanet(focusedBody, false);
-            else if (overviewActive) showSystemOverview(false);
+            if (focusedBody && (!Learn.active || Learn.inLesson)) focusPlanet(focusedBody, false);
+            else if (overviewActive && (!Learn.active || Learn.inLesson)) showSystemOverview(false);
         }
 
         function showSystemOverview(explicit = true) {
@@ -1440,7 +1450,10 @@
             const nav = document.getElementById('planet-nav').getBoundingClientRect();
             const bar = document.querySelector('.simulation-controls').getBoundingClientRect();
             const left = mobileInfoLayout.matches ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
-            const right = innerWidth - 16, top = nav.bottom + 12, bottom = bar.top - 16;
+            const lessonPanel = document.getElementById('learn-root').getBoundingClientRect();
+            const lessonBottom = Learn.active && matchMedia('(max-width: 900px)').matches;
+            const right = Learn.active && !lessonBottom ? lessonPanel.left - 20 : innerWidth - 16;
+            const top = nav.bottom + 12, bottom = lessonBottom ? lessonPanel.top - 12 : bar.top - 16;
             const width = Math.max(64, right - left - 24), height = Math.max(64, bottom - top - 24);
             const points = [];
             for (const mesh of planets) {
@@ -1547,7 +1560,7 @@
 
         function checkIntersection(x, y) {
             const el = document.elementFromPoint(x, y);
-            if (el && (el.closest('.simulation-controls') || el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav') || el.closest('#planet-labels'))) return;
+            if (el && (el.closest('.simulation-controls') || el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav') || el.closest('#planet-labels') || el.closest('#learn-root'))) return;
             
             if (isWaiting || isQuizResults) return;
 
@@ -1574,6 +1587,7 @@
         }
 
         function showPopup(data) {
+            if (Learn.active) return;
             if (isQuizMode || isQuizResults) return;
             const panel = document.getElementById('info-card');
             const switchingPlanet = panel.style.display === 'block' && document.getElementById('planet-name').innerText !== data.name;
@@ -1621,6 +1635,7 @@
         }
 
         function startQuiz() {
+            Learn.leave(); // Restore lesson-owned settings before Quiz captures them.
             if (!isQuizMode && !isQuizResults) orbitsBeforeQuiz = areOrbitsActive;
             cancelQuizTimer();
             isQuizMode = true; isQuizResults = false;
@@ -1699,6 +1714,7 @@
         }
         // Presentation-only synchronization; quiz scoring, timers and scene behavior stay unchanged.
         function showExploration() {
+            Learn.leave();
             if (isQuizMode || isQuizResults) stopQuiz();
             else closePopup();
         }
@@ -1713,9 +1729,12 @@
             const sidebar = document.getElementById('side-ui');
             sidebar.inert = !ready || isQuizResults;
             document.querySelector('.simulation-controls').inert = !ready || isQuizMode || isQuizResults;
-            document.getElementById('explore-nav').setAttribute('aria-current', isQuizMode || isQuizResults ? 'false' : 'page');
+            document.getElementById('explore-nav').setAttribute('aria-current', isQuizMode || isQuizResults || Learn.active ? 'false' : 'page');
+            document.getElementById('learn-nav').setAttribute('aria-current', Learn.active ? 'page' : 'false');
             document.getElementById('quiz-nav').setAttribute('aria-current', isQuizMode || isQuizResults ? 'page' : 'false');
-            if (document.getElementById('info-card').style.display === 'block') {
+            if (Learn.active && focusedBody) {
+                selectedNavigationPlanet = focusedBody.userData.name;
+            } else if (document.getElementById('info-card').style.display === 'block') {
                 selectedNavigationPlanet = document.getElementById('planet-name').innerText;
             } else if (controls && controls.target.lengthSq() === 0) {
                 selectedNavigationPlanet = null;
@@ -1740,6 +1759,35 @@
                 event.preventDefault();
                 event.currentTarget.querySelector('button').focus();
             }
+        });
+        Learn.init({
+            ready: () => !!controls && document.body.classList.contains('is-ready'),
+            hasBody: id => ({ sun: 'Slnko', earth: 'Zem', jupiter: 'Jupiter' })[id] !== undefined,
+            closeInfo: closePopup,
+            exitQuiz: () => { if (isQuizMode || isQuizResults) stopQuiz(); },
+            sync: () => { syncNavigationPresentation(); cameraFrameDirty = true; },
+            cancel: () => { if (controls) { cancelCameraTransition(); planetLabels.hide(); } },
+            snapshot: () => ({ playing: areOrbitsActive, speed: simulationSpeed, orbits: areOrbitLinesVisible }),
+            restore: saved => {
+                if (areOrbitsActive !== saved.playing) toggleOrbit();
+                simulationSpeed = saved.speed;
+                document.getElementById('simulation-speed').value = String(saved.speed);
+                if (areOrbitLinesVisible !== saved.orbits) toggleOrbitVisibility();
+            },
+            demonstrate: demo => {
+                if (!controls || !Learn.active) return;
+                closePopup();
+                if (demo.kind === 'overview') { if (!areOrbitsActive) toggleOrbit(); showSystemOverview(); }
+                else {
+                    const name = ({ sun: 'Slnko', earth: 'Zem', jupiter: 'Jupiter' })[demo.body];
+                    const mesh = planets.find(p => p.userData.name === name);
+                    if (!mesh) return;
+                    if (areOrbitsActive) toggleOrbit();
+                    selectedNavigationPlanet = name; focusPlanet(mesh);
+                }
+                syncNavigationPresentation();
+            },
+            quiz: startQuiz
         });
         syncNavigationPresentation();
     </script>
