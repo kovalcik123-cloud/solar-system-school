@@ -437,7 +437,7 @@
             { name: "Venuša", radius: 1.9, distance3D: 50, speed: 0.012, color: 0xe3bb76, type: "atmosphere", texture: "venus.jpg", realDist: "108.2M km", realDiam: "12,104 km", orbit: "225 dní", rotation: "243 dní", fact: "Jej deň je dlhší ako jej rok." },
             { 
                 name: "Zem", radius: 2, distance3D: 70, speed: 0.010, color: 0x2233ff, type: "earth", texture: "earth.jpg", realDist: "149.6M km", realDiam: "12,742 km", orbit: "365 dní", rotation: "24 hod", fact: "Jediná planéta nepomenovaná po bohovi.",
-                moons: [{ name: "Mesiac", radius: 0.5, distance: 4, speed: 0.05, texture: "moon.jpg" }] // ADDED MOON
+                moons: [{ name: "Mesiac", radius: 0.5, distance: 4, speed: 0.05, texture: "moon.jpg", rotationModel: "tidallyLocked", texturePhaseOffset: 0 }] // ADDED MOON
             },
             { 
                 name: "Mars", radius: 1.1, distance3D: 90, speed: 0.008, color: 0xdd4422, type: "rocky", texture: "mars.jpg", realDist: "227.9M km", realDiam: "6,779 km", orbit: "687 dní", rotation: "24.6 hod", fact: "Domov najvyššej sopky Olympus Mons.",
@@ -943,8 +943,10 @@
                         moonMesh.userData = { 
                             ...moonData, 
                             angle: Math.random() * Math.PI * 2,
-                            parent: mesh 
+                            parent: mesh,
+                            rotationModel: moonData.rotationModel || "independent"
                         };
+                        if (moonMesh.userData.rotationModel === "tidallyLocked") orientLockedSatellite(moonMesh);
                         scene.add(moonMesh);
                         satellites.push(moonMesh);
                     });
@@ -965,6 +967,12 @@
                     orbitLines.push(orbitLine);
                 }
             });
+        }
+
+        // SphereGeometry UV center is local +X. A fixed phase keeps this texture
+        // hemisphere Earth-facing across reloads; geographic near-side alignment is unverified.
+        function orientLockedSatellite(moon) {
+            moon.rotation.y = Math.PI - moon.userData.angle + moon.userData.texturePhaseOffset;
         }
 
         function toggleOrbit() {
@@ -1022,18 +1030,23 @@
             let delta = clock.getDelta();
             if (delta > 0.1) delta = 0.1; // Cap delta to prevent massive jumps during lags
 
+            // Advance only astronomical motion. Keep sampling the clock while paused so
+            // rendering, camera controls and UI timers continue without a resume-time jump.
+            const motionActive = areOrbitsActive && !isQuizMode && !isQuizResults;
+            const motionDelta = motionActive ? delta : 0;
+
             // PLANETS
             planets.forEach(mesh => {
                 const data = mesh.userData;
                 const spinSpeed = data.name === "Slnko" ? 0.002 : 0.004;
-                mesh.rotation.y += spinSpeed * delta * 60;
+                mesh.rotation.y += spinSpeed * motionDelta * 60;
                 if (data.name === "Zem") {
                     // Relative drift adds slow independent rotation to the cloud layer.
                     const clouds = mesh.getObjectByName('earth-clouds');
-                    clouds.rotation.y += 0.006 * delta;
+                    clouds.rotation.y += 0.006 * motionDelta;
                 }
 
-                if (areOrbitsActive && !isQuizMode && data.distance3D > 0) {
+                if (motionActive && data.distance3D > 0) {
                     mesh.userData.angle -= data.speed * 25 * delta * simulationSpeed;
                     mesh.position.x = Math.cos(mesh.userData.angle) * data.distance3D;
                     mesh.position.z = Math.sin(mesh.userData.angle) * data.distance3D;
@@ -1045,15 +1058,16 @@
                 const data = moon.userData;
                 const parent = data.parent;
                 
-                moon.rotation.y += 0.01 * delta * 60;
+                if (data.rotationModel === "independent") moon.rotation.y += 0.01 * motionDelta * 60;
 
-                if (areOrbitsActive && !isQuizMode) {
+                if (motionActive) {
                     data.angle -= data.speed * 25 * delta * simulationSpeed;
                 }
                 
                 moon.position.x = parent.position.x + Math.cos(data.angle) * data.distance;
                 moon.position.z = parent.position.z + Math.sin(data.angle) * data.distance;
                 moon.position.y = parent.position.y; 
+                if (data.rotationModel === "tidallyLocked") orientLockedSatellite(moon);
             });
             
             updateCameraMotion(now);
