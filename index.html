@@ -458,6 +458,14 @@
         let isQuizMode = false, isQuizResults = false, quizQueue = [], quizIndex = 0, score = 0, quizTarget = null, isWaiting = false;
         let quizTimer = null, quizSession = 0, orbitsBeforeQuiz = true;
         let simulationSpeed = 1;
+        // Illustrative display-time rates, not a calibrated astronomical clock.
+        const EARTH_SPIN_RATE = 0.60;
+        const ORBIT_DISPLAY_FACTOR = 0.10;
+        const EARTH_CLOUD_DRIFT_RATE = 0.006;
+
+        function orbitalAngularSpeed(data) {
+            return data.speed * 25 * ORBIT_DISPLAY_FACTOR * simulationSpeed;
+        }
         const orbitLines = [];
         let areOrbitLinesVisible = true;
         let areOrbitsActive = true; 
@@ -1039,15 +1047,17 @@
             planets.forEach(mesh => {
                 const data = mesh.userData;
                 const spinSpeed = data.name === "Slnko" ? 0.002 : 0.004;
-                mesh.rotation.y += spinSpeed * motionDelta * 60;
+                mesh.rotation.y += data.name === "Zem"
+                    ? EARTH_SPIN_RATE * motionDelta * simulationSpeed
+                    : spinSpeed * motionDelta * 60;
                 if (data.name === "Zem") {
                     // Relative drift adds slow independent rotation to the cloud layer.
                     const clouds = mesh.getObjectByName('earth-clouds');
-                    clouds.rotation.y += 0.006 * motionDelta;
+                    clouds.rotation.y += EARTH_CLOUD_DRIFT_RATE * motionDelta * simulationSpeed;
                 }
 
                 if (motionActive && data.distance3D > 0) {
-                    mesh.userData.angle -= data.speed * 25 * delta * simulationSpeed;
+                    mesh.userData.angle -= orbitalAngularSpeed(data) * delta;
                     mesh.position.x = Math.cos(mesh.userData.angle) * data.distance3D;
                     mesh.position.z = Math.sin(mesh.userData.angle) * data.distance3D;
                 }
@@ -1061,7 +1071,7 @@
                 if (data.rotationModel === "independent") moon.rotation.y += 0.01 * motionDelta * 60;
 
                 if (motionActive) {
-                    data.angle -= data.speed * 25 * delta * simulationSpeed;
+                    data.angle -= orbitalAngularSpeed(data) * delta;
                 }
                 
                 moon.position.x = parent.position.x + Math.cos(data.angle) * data.distance;
@@ -1476,7 +1486,7 @@
                 const data = mesh.userData;
                 if (areOrbitsActive && !reducedCameraMotion.matches && data.distance3D > 0) {
                     // Bound only the transition's short orbital arc, never the full orbit.
-                    const angularSpeed = data.speed * 25 * simulationSpeed;
+                    const angularSpeed = orbitalAngularSpeed(data);
                     const steps = Math.max(1, Math.ceil(angularSpeed * 1.25 / (Math.PI / 18)));
                     for (let i = 1; i <= steps + 1; i++) {
                         // Include arrival plus one capped simulation delta (0.1s) for frame timing.
