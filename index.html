@@ -321,6 +321,14 @@
             #info-card h2 { font-size: 20px; }
             .info-thumbnail { width: 36px; height: 36px; }
         }
+        /* Phase 5C: HTML identification, independent of WebGL and camera framing. */
+        .planet-labels { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+        .planet-label { position: absolute; left: 0; top: 0; min-width: 44px; min-height: 44px; box-sizing: border-box; padding: 8px 10px; border: 1px solid rgba(139,192,221,.3); border-radius: 10px; background: rgba(8,19,34,.88); color: #e8f2fa; font: 500 16px/1.2 system-ui, sans-serif; white-space: nowrap; text-transform: none; cursor: pointer; visibility: hidden; pointer-events: auto; touch-action: manipulation; }
+        .planet-label:hover { border-color: #44aadd; background: #10283b; }
+        .planet-label:focus-visible { outline: 3px dashed #e8f2fa; outline-offset: 3px; }
+        .planet-label[aria-hidden="true"], .planet-labels.is-interacting .planet-label { pointer-events: none; }
+        body:not(.is-ready) .planet-labels, body.is-quiz .planet-labels, .planet-labels[hidden] { display: none; }
+        @media (max-width: 1199px) { .planet-label { font-size: 14px; } }
     </style>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -343,6 +351,7 @@
     <nav id="planet-nav" aria-label="Výber planéty" style="display:none;"></nav>
 
     <div id="canvas-container"></div>
+    <div id="planet-labels" class="planet-labels" role="group" aria-label="Názvy telies v prehľade" hidden inert></div>
 
     <aside id="side-ui" aria-label="Navigácia aplikácie">
         <div class="app-brand">
@@ -633,6 +642,7 @@
             createUniverse(); 
             createSolarSystem();
             populateNav(); 
+            planetLabels.init();
 
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
@@ -1047,7 +1057,153 @@
             controls.update();
             controls.minDistance = minimum; controls.maxDistance = maximum;
             renderer.render(scene, camera);
+            planetLabels.update(now);
         }
+
+        const planetLabels = (() => {
+            const layer = document.getElementById('planet-labels');
+            const entries = [], world = new THREE.Vector3(), view = new THREE.Vector3(), projected = new THREE.Vector3();
+            const ui = ['side-ui', 'planet-nav', 'info-card'].map(id => document.getElementById(id));
+            ui.push(document.querySelector('.simulation-controls'));
+            let requested = false, dirty = true, layout, occupied = [], order = [];
+            const invalidate = () => { dirty = true; };
+            const observer = new ResizeObserver(invalidate);
+            const eligible = () => requested && !!controls && document.body.classList.contains('is-ready') && !isQuizMode && !isQuizResults && !focusedBody && !cameraTransition;
+            function restoreFocus(entry) {
+                if (document.activeElement !== entry.button) return;
+                const nav = document.querySelector(`#planet-nav [data-planet="${entry.mesh.userData.name}"]`);
+                if (nav && !isQuizResults) { nav.focus({ preventScroll: true }); nav.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+            }
+            function conceal(entry, reason) {
+                if (entry.visible) {
+                    restoreFocus(entry);
+                    entry.button.style.visibility = 'hidden'; entry.button.inert = true;
+                    entry.button.tabIndex = -1; entry.button.setAttribute('aria-hidden', 'true');
+                    entry.hiddenAt = performance.now(); entry.visible = false;
+                }
+                if (entry.button.dataset.reason !== reason) entry.button.dataset.reason = reason;
+            }
+            function hideLayer() {
+                entries.forEach(entry => { conceal(entry, 'mode'); entry.pending = -1; });
+                layer.hidden = true; layer.inert = true;
+            }
+            function hide() { requested = false; hideLayer(); }
+            function sync() { if (!eligible()) hideLayer(); }
+            function overview() {
+                requested = true; hideLayer(); dirty = true;
+                entries.forEach(entry => { entry.priority = null; });
+            }
+            function init() {
+                if (entries.length) return;
+                planets.forEach((mesh, index) => {
+                    const button = document.createElement('button');
+                    button.type = 'button'; button.className = 'planet-label';
+                    button.textContent = mesh.userData.name; button.dataset.planet = mesh.userData.name;
+                    button.setAttribute('aria-label', `Zamerať ${mesh.userData.name}`);
+                    button.setAttribute('aria-hidden', 'true'); button.inert = true; button.tabIndex = -1;
+                    const entry = { mesh, button, index, visible: false, slot: -1, pending: -1, hiddenAt: -Infinity, priority: null, cancelled: false, body: {}, box: {} };
+                    button.addEventListener('pointerdown', event => {
+                        entry.cancelled = !event.isPrimary || event.button !== 0;
+                        entry.pointerX = event.clientX; entry.pointerY = event.clientY;
+                        if (event.isPrimary) button.setPointerCapture(event.pointerId);
+                    });
+                    button.addEventListener('pointermove', event => {
+                        if (event.buttons && Math.hypot(event.clientX - entry.pointerX, event.clientY - entry.pointerY) > 6) entry.cancelled = true;
+                    });
+                    button.addEventListener('pointercancel', () => { entry.cancelled = true; });
+                    button.addEventListener('click', event => {
+                        event.stopPropagation();
+                        if (!eligible() || !entry.visible || (event.detail !== 0 && entry.cancelled)) return;
+                        selectPlanetByName(mesh.userData.name);
+                    });
+                    entries.push(entry); layer.appendChild(button); observer.observe(button);
+                });
+                order = entries.slice();
+                ui.forEach(element => observer.observe(element)); observer.observe(renderer.domElement);
+                window.addEventListener('resize', invalidate);
+                document.fonts.ready.then(invalidate);
+                controls.addEventListener('start', () => layer.classList.add('is-interacting'));
+                controls.addEventListener('end', () => layer.classList.remove('is-interacting'));
+            }
+            function measure() {
+                // Read dimensions together only after layout/font/UI changes, never for tracking.
+                const canvas = renderer.domElement.getBoundingClientRect();
+                const boxes = ui.map(element => element.getBoundingClientRect());
+                const mobile = mobileInfoLayout.matches;
+                layout = { canvas, left: mobile ? 12 : boxes[0].right + 20, right: canvas.right - 16, top: boxes[1].bottom + 12, bottom: boxes[3].top - 16,
+                    obstacles: boxes.filter(box => box.width && box.height).map(b => ({ x: b.left, y: b.top, w: b.width, h: b.height })), mobile };
+                entries.forEach(entry => { const box = entry.button.getBoundingClientRect(); entry.width = box.width; entry.height = box.height; });
+                dirty = false;
+            }
+            const overlaps = (a, b, gap = 8) => a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
+            function candidate(entry, slot) {
+                const b = entry.body, w = entry.width, h = entry.height, r = b.radius + 10;
+                const box = entry.box;
+                box.w = w; box.h = h;
+                if (slot === 0) { box.x = b.x + r; box.y = b.y - h / 2; }
+                else if (slot === 1) { box.x = b.x - r - w; box.y = b.y - h / 2; }
+                else if (slot === 2) { box.x = b.x - w / 2; box.y = b.y - r - h; }
+                else if (slot === 3) { box.x = b.x - w / 2; box.y = b.y + r; }
+                else { box.x = b.x + (slot % 2 === 0 ? r * .72 : -r * .72 - w); box.y = b.y + (slot < 6 ? -r * .72 - h : r * .72); }
+                return box;
+            }
+            function valid(box, fresh = false) {
+                const margin = fresh ? 10 : 6;
+                if (box.x < layout.left + margin || box.y < layout.top + margin || box.x + box.w > layout.right - margin || box.y + box.h > layout.bottom - margin) return false;
+                if (occupied.some(other => overlaps(box, other, fresh ? 12 : 8))) return false;
+                if (layout.obstacles.some(b => overlaps(box, b, margin))) return false;
+                return !entries.some(entry => {
+                    const body = entry.body; if (!body.inFront) return false;
+                    const x = Math.max(box.x, Math.min(body.x, box.x + box.w)), y = Math.max(box.y, Math.min(body.y, box.y + box.h));
+                    return Math.hypot(x - body.x, y - body.y) < body.radius + (fresh ? 8 : 4);
+                });
+            }
+            function update(now) {
+                if (!eligible()) { if (!layer.hidden) hideLayer(); return; }
+                if (layer.hidden) { layer.hidden = false; layer.inert = false; dirty = true; }
+                if (dirty) measure();
+                const c = layout.canvas, focal = c.height * camera.projectionMatrix.elements[5] / 2;
+                entries.forEach(entry => {
+                    world.setFromMatrixPosition(entry.mesh.matrixWorld); view.copy(world).applyMatrix4(camera.matrixWorldInverse); projected.copy(world).project(camera);
+                    const depth = -view.z, radius = focusRadius(entry.mesh), disk = entry.mesh.userData.radius;
+                    const b = entry.body;
+                    b.x = c.left + (projected.x + 1) * c.width / 2; b.y = c.top + (1 - projected.y) * c.height / 2; b.depth = depth;
+                    b.radius = depth > radius ? focal * radius / (depth - radius) : Infinity;
+                    b.disk = depth > disk ? focal * disk / (depth - disk) : Infinity;
+                    b.inFront = depth > camera.near && depth < camera.far;
+                    b.onScreen = b.inFront && b.x >= layout.left && b.x <= layout.right && b.y >= layout.top && b.y <= layout.bottom;
+                    if (entry.priority === null) entry.priority = b.disk;
+                });
+                order.sort((a, b) => Number(document.activeElement === b.button) - Number(document.activeElement === a.button) || Number(b.visible) - Number(a.visible) || a.priority - b.priority || a.index - b.index);
+                occupied.length = 0;
+                const budget = Math.max(0, (layout.right - layout.left) * (layout.bottom - layout.top)) * (layout.mobile ? .10 : .16);
+                let used = 0;
+                for (const entry of order) {
+                    const b = entry.body;
+                    if (!b.onScreen) { conceal(entry, 'outside'); entry.pending = -1; continue; }
+                    if (entries.some(other => other !== entry && other.body.inFront && other.body.depth < b.depth && Math.hypot(other.body.x - b.x, other.body.y - b.y) + b.disk < other.body.disk * .95)) {
+                        conceal(entry, 'occluded'); entry.pending = -1; continue;
+                    }
+                    const cost = (entry.width + 8) * (entry.height + 8);
+                    if (used + cost > budget && document.activeElement !== entry.button) { conceal(entry, 'density'); entry.pending = -1; continue; }
+                    let slot = entry.slot, box = slot >= 0 ? candidate(entry, slot) : null;
+                    if (!box || !valid(box, !entry.visible)) { slot = -1; for (let i = 0; i < 8; i++) { const next = candidate(entry, i); if (valid(next, true)) { slot = i; box = next; break; } } }
+                    if (slot < 0) { conceal(entry, 'collision'); entry.pending = -1; continue; }
+                    occupied.push(box); used += cost;
+                    if (!entry.visible || slot !== entry.slot) {
+                        conceal(entry, 'settling');
+                        if (entry.pending !== slot) { entry.pending = slot; entry.pendingSince = now; }
+                        if (now - entry.pendingSince < 160 || now - entry.hiddenAt < 250) continue;
+                    }
+                    const transform = `translate3d(${box.x.toFixed(2)}px,${box.y.toFixed(2)}px,0)`;
+                    if (entry.transform !== transform) { entry.button.style.transform = transform; entry.transform = transform; }
+                    entry.slot = slot; entry.pending = -1;
+                    if (!entry.visible) { entry.visible = true; entry.button.style.visibility = 'visible'; entry.button.inert = false; entry.button.tabIndex = 0; entry.button.setAttribute('aria-hidden', 'false'); }
+                    if (entry.button.dataset.reason !== 'visible') entry.button.dataset.reason = 'visible';
+                }
+            }
+            return { init, update, overview, hide, sync };
+        })();
 
         // Camera-only focus state: a single transition, no timers or deferred callbacks.
         let cameraTransition = null, focusedBody = null, cameraQuizState = false;
@@ -1164,6 +1320,7 @@
         }
 
         function focusPlanet(mesh, explicitSelection = true) {
+            planetLabels.hide();
             overviewActive = false;
             // Layout changes preserve the user's orientation, including during a transition.
             const direction = !explicitSelection && cameraTransition
@@ -1353,9 +1510,11 @@
             controls.maxDistance = Math.max(500, best.distance * 2, camera.position.distanceTo(controls.target) * 1.05);
             overviewActive = true;
             beginCameraTransition(best.direction.multiplyScalar(best.distance), new THREE.Vector3());
+            planetLabels.overview();
         }
 
         function resetCamera() {
+            planetLabels.hide();
             overviewActive = false;
             cancelCameraTransition();
             focusedBody = null;
@@ -1388,7 +1547,7 @@
 
         function checkIntersection(x, y) {
             const el = document.elementFromPoint(x, y);
-            if (el && (el.closest('.simulation-controls') || el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav'))) return;
+            if (el && (el.closest('.simulation-controls') || el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav') || el.closest('#planet-labels'))) return;
             
             if (isWaiting || isQuizResults) return;
 
@@ -1550,6 +1709,7 @@
             document.body.classList.toggle('is-ready', ready);
             document.body.classList.toggle('is-quiz', isQuizMode || isQuizResults);
             syncQuizCamera();
+            planetLabels.sync();
             const sidebar = document.getElementById('side-ui');
             sidebar.inert = !ready || isQuizResults;
             document.querySelector('.simulation-controls').inert = !ready || isQuizMode || isQuizResults;
