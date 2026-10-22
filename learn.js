@@ -2,8 +2,10 @@
 window.Learn = (() => {
   let adapter, root, active = false, lesson = null, step = 0, answer = null;
   let feedback = null, completed = false, session = 0, snapshot = null, expanded = true;
+  let experimentUI = null, experimentDetailsOpen = false;
   const data = window.LearnContent;
   const sheetLayout = window.matchMedia('(max-width: 900px)');
+  const shortExperimentLayout = window.matchMedia('(max-width: 700px) and (min-height: 521px) and (max-height: 740px)');
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
   function button(text, action, cls) { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', action); return b; }
   function validate() {
@@ -12,15 +14,17 @@ window.Learn = (() => {
       if (ids.has(l.id) || !data.topics.some(t => t.id === l.id)) throw Error('Invalid lesson ID');
       ids.add(l.id); const steps = new Set();
       for (const s of l.steps) {
-        if (steps.has(s.id) || !['intro','observe','question','summary'].includes(s.type)) throw Error('Invalid lesson step');
+        if (steps.has(s.id) || !['intro','observe','experiment','question','summary'].includes(s.type)) throw Error('Invalid lesson step');
         steps.add(s.id);
         if (s.demo && ( !['overview','focus'].includes(s.demo.kind) || (s.demo.kind === 'focus' && !adapter.hasBody(s.demo.body)))) throw Error('Invalid lesson demonstration');
+        if (s.demo?.view && (s.demo.kind !== 'focus' || s.demo.body !== 'earth' || s.demo.view !== 'day-night')) throw Error('Invalid lesson view');
+        if (s.type === 'experiment' && (s.experiment?.kind !== 'earth-day-night' || s.demo?.body !== 'earth' || s.demo?.view !== 'day-night')) throw Error('Invalid lesson experiment');
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
       }
     }
   }
   function cleanup() {
-    session++; adapter.cancel();
+    session++; adapter.cancel(); experimentDetailsOpen = false;
     if (snapshot) adapter.restore(snapshot);
     snapshot = null; lesson = null; step = 0; answer = null; feedback = null; completed = false;
   }
@@ -45,7 +49,7 @@ window.Learn = (() => {
   }
   function move(index) {
     if (!active || !lesson || index < 0 || index >= lesson.steps.length) return;
-    session++; adapter.cancel(); step = index; answer = null; feedback = null;
+    session++; adapter.cancel(); experimentDetailsOpen = false; step = index; answer = null; feedback = null;
     completed = lesson.steps[step].type === 'summary'; expanded = true; render(); demonstrate();
   }
   function demonstrate() {
@@ -53,14 +57,35 @@ window.Learn = (() => {
     const current = lesson.steps[step];
     const demo = current.demo || (current.type === 'summary' ? { kind: 'overview' } : null);
     if (!demo) return;
+    adapter.experiment.end();
     adapter.demonstrate(demo);
+    if (current.type === 'experiment') {
+      const owner = session;
+      adapter.experiment.begin(current.experiment, () => { if (active && session === owner) syncExperiment(); });
+    }
+  }
+  function syncExperiment() {
+    if (!experimentUI || !active || lesson?.steps[step].type !== 'experiment') return;
+    const state = adapter.experiment.state();
+    experimentUI.turn.disabled = !state.active || state.busy;
+    experimentUI.reset.disabled = !state.active;
+    experimentUI.light.textContent = state.active ? (state.day ? 'DEŇ' : 'NOC') : 'Pripravujeme pokus…';
+    experimentUI.light.dataset.day = String(!!state.day);
+    const explanation = state.boundary ? 'Miesto je blízko rozhrania dňa a noci. Model neurčuje presný čas východu ani západu Slnka.' : state.day ? 'Na označené miesto dopadá priame slnečné svetlo.' : 'Označené miesto je odvrátené od priameho slnečného svetla.';
+    experimentUI.explanation.textContent = state.active ? explanation : '';
+    experimentUI.visibility.textContent = state.hiddenReason === 'back' ? 'Miesto je na odvrátenej strane Zeme. Jeho stav sleduj tu v paneli.' : state.hiddenReason ? 'Značka je mimo voľného výhľadu. Stav miesta zostáva dostupný tu.' : 'Krúžok označuje stále to isté miesto na povrchu.';
+    const announcement = state.active && !state.busy ? `${state.turns ? 'Otočenie dokončené.' : 'Pokus je pripravený.'} Označené miesto: ${state.day ? 'deň' : 'noc'}.` : '';
+    if (experimentUI.status.textContent !== announcement) experimentUI.status.textContent = announcement;
   }
   function render() {
+    experimentUI = null;
+    const compactExperiment = !!lesson && lesson.steps[step].type === 'experiment' && shortExperimentLayout.matches;
     root.replaceChildren(); root.hidden = false; root.inert = false;
     document.body.classList.add('is-learn'); root.className = lesson ? 'learn-panel' : 'learn-home';
     root.classList.toggle('is-expanded', expanded);
+    root.classList.toggle('is-experiment', !!lesson && lesson.steps[step].type === 'experiment');
     const header = el('header', null, 'learn-header');
-    const heading = el('h2', lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
+    const heading = el('h2', compactExperiment ? 'Pokus so Zemou' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
     heading.id = 'learn-heading'; heading.tabIndex = -1;
     const titles = el('div'), eyebrow = el('p', null, 'learn-eyebrow');
     if (lesson) {
@@ -70,8 +95,12 @@ window.Learn = (() => {
     } else eyebrow.textContent = 'Uč sa · Vesmír na dosah';
     titles.append(eyebrow, heading); header.append(titles);
     if (lesson) {
-      const toggle = button(expanded ? 'Menej' : 'Viac', () => { expanded = !expanded; render(); }, 'learn-expand');
-      toggle.setAttribute('aria-expanded', String(expanded)); toggle.setAttribute('aria-controls', 'learn-body'); header.append(toggle);
+      const toggle = button(compactExperiment ? (experimentDetailsOpen ? 'Menej textu' : 'Vysvetlenie') : expanded ? 'Menej' : 'Viac', () => {
+        if (compactExperiment) { experimentDetailsOpen = !experimentDetailsOpen; render(); root.querySelector('.learn-expand').focus({ preventScroll: true }); }
+        else { expanded = !expanded; render(); }
+      }, 'learn-expand');
+      toggle.setAttribute('aria-expanded', String(compactExperiment ? experimentDetailsOpen : expanded));
+      toggle.setAttribute('aria-controls', compactExperiment ? 'learn-experiment-details' : 'learn-body'); header.append(toggle);
     }
     if (!lesson || lesson.steps[step].type !== 'summary') header.append(button('Zavrieť', leave, 'learn-close'));
     root.append(header);
@@ -93,17 +122,31 @@ window.Learn = (() => {
         const available = data.lessons.some(l => l.id === topic.id);
         card.classList.add(available ? 'is-available' : 'is-upcoming');
         if (available) {
-          card.prepend(el('p', 'Začni tu', 'learn-topic-badge'));
-          card.append(el('p', topic.description), el('p', `Približne ${topic.minutes} minúty`, 'learn-duration'), button('Začať lekciu', () => start(topic.id), 'learn-primary'));
+          card.prepend(el('p', 'Interaktívna lekcia', 'learn-topic-badge'));
+          card.append(el('p', topic.description), el('p', `Približne ${topic.minutes} min`, 'learn-duration'), button('Začať lekciu', () => start(topic.id), 'learn-primary'));
         } else card.append(el('p', 'Pripravujeme', 'learn-topic-status'));
         grid.append(card);
       }
       body.append(grid);
     } else {
       const s = lesson.steps[step];
-      if (s.text && s.type !== 'summary') body.append(el('p', s.text));
+      if (s.text && s.type !== 'summary' && s.type !== 'experiment') body.append(el('p', s.text));
       if (s.type === 'intro') { body.append(el('h3', 'Čo sa naučíš'), el('p', lesson.objective), el('p', lesson.limitation, 'learn-note')); }
-      if (s.demo) body.append(button('Zopakovať ukážku', demonstrate));
+      if (s.demo && s.type !== 'experiment') body.append(button('Zopakovať ukážku', demonstrate));
+      if (s.type === 'experiment') {
+        const light = el('p', null, 'learn-daynight'); light.setAttribute('aria-label', 'Stav označeného miesta');
+        const explanation = el('p'), visibility = el('p', null, 'learn-location-note');
+        const turn = button('Otočiť Zem o 90°', () => adapter.experiment.turn(), 'learn-primary');
+        const reset = button('Obnoviť pokus', () => adapter.experiment.reset());
+        const actions = el('div', null, 'learn-experiment-actions'); actions.append(turn, reset);
+        const status = el('p', null, 'learn-experiment-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-atomic', 'true');
+        experimentUI = { light, explanation, visibility, turn, reset, status };
+        const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
+        details.hidden = compactExperiment && !experimentDetailsOpen;
+        if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
+        details.append(explanation, visibility, el('p', s.text), el('p', s.note, 'learn-note'), button('Zopakovať ukážku', demonstrate));
+        body.append(light, actions, details, status);
+      }
       if (s.type === 'question') {
         const group = el('fieldset'); group.append(el('legend', 'Vyber jednu odpoveď'));
         for (const option of s.options) {
@@ -144,17 +187,18 @@ window.Learn = (() => {
       if (step < lesson.steps.length - 1) { const next = button(lesson.steps[step].next || 'Ďalej', () => move(step + 1), 'learn-primary'); next.disabled = lesson.steps[step].type === 'question' && feedback !== 'correct'; footer.append(next); }
       root.append(footer);
     }
-    const collapsed = lesson && !expanded && sheetLayout.matches;
-    body.inert = !!collapsed; adapter.sync();
+    const collapsed = lesson && !expanded && sheetLayout.matches && !compactExperiment;
+    body.inert = !!collapsed; adapter.sync(); syncExperiment();
     heading.focus({ preventScroll: true });
   }
   function syncResponsiveSheet() {
     if (!active) return;
     const body = root.querySelector('.learn-body');
-    const collapsed = !!lesson && !expanded && sheetLayout.matches;
+    const collapsed = !!lesson && !expanded && sheetLayout.matches && !(lesson.steps[step].type === 'experiment' && shortExperimentLayout.matches);
     if (collapsed && body.contains(document.activeElement)) root.querySelector('.learn-expand').focus();
     body.inert = collapsed; adapter.sync();
   }
+  shortExperimentLayout.addEventListener('change', () => { if (active && lesson?.steps[step].type === 'experiment') render(); });
   sheetLayout.addEventListener('change', syncResponsiveSheet);
   window.addEventListener('resize', syncResponsiveSheet);
   return { init(a) { adapter = a; root = document.getElementById('learn-root'); root.addEventListener('click', event => event.stopPropagation()); validate(); }, enter, leave, home,

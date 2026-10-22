@@ -98,3 +98,30 @@ body.is-learn #info-card { display: none !important; }
  .learn-topics { gap: 12px; }
  #learn-root .learn-topic.is-available h3 { font-size: 21px; }
 }
+
+/* Phase 6D: one surface location and explicit lesson-only rotation controls. */
+#learn-earth-marker { position: fixed; top: 0; left: 0; width: 16px; height: 16px; margin: -8px; box-sizing: border-box; border: 2px solid #e8f8ff; border-radius: 50%; background: #163e6680; box-shadow: 0 0 0 2px #071324; z-index: 40; pointer-events: none; }
+#learn-earth-marker[hidden] { display: none; }
+.learn-daynight { display: inline-block; padding: 5px 13px; border-radius: 8px; background: #244158; color: #e8f2fa; font-size: 20px; font-weight: 700; letter-spacing: .06em; margin-bottom: 10px; }
+.learn-daynight[data-day="true"] { background: #3a3822; color: #ffedb2; }
+.learn-experiment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.learn-location-note { color: #b4c5d6; font-size: 14px; }
+.learn-experiment-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (min-width: 1200px) { .learn-topics .is-available { grid-column: span 1; } }
+
+/* Phase 6D.1: keep the experiment usable above the short-phone mode navigation. */
+.learn-experiment-details > button { margin: 4px 8px 4px 0; }
+@media (max-width: 700px) and (min-height: 521px) and (max-height: 740px) {
+ #learn-root.learn-panel.is-experiment { display: flex; max-height: min(310px, calc(100dvh - 280px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
+ .learn-panel.is-experiment .learn-header { padding: 6px 10px; gap: 6px; align-items: center; flex-shrink: 0; }
+ #learn-root.is-experiment h2 { font-size: 16px; line-height: 1.25; margin-top: 2px; }
+ #learn-root.is-experiment .learn-header button { padding: 8px; font-size: 14px; }
+ .learn-panel.is-experiment .learn-progress { margin: 0 10px 6px; }
+ .learn-panel.is-experiment .learn-body { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 6px; padding: 0 10px 6px; }
+ .learn-panel.is-experiment .learn-daynight { display: flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 6px 7px; margin: 0; font-size: 16px; }
+ .learn-panel.is-experiment .learn-experiment-actions { margin: 0; gap: 6px; flex-wrap: nowrap; }
+ #learn-root.is-experiment .learn-experiment-actions button { flex: 1; padding: 8px 6px; font-size: 14px; }
+ .learn-panel.is-experiment .learn-experiment-details { grid-column: 1 / -1; max-height: 88px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid #8bc0dd33; padding-top: 6px; }
+ .learn-panel.is-experiment .learn-experiment-details:focus-visible { outline: 2px solid #8bd8ff; outline-offset: -2px; }
+ .learn-panel.is-experiment .learn-footer { padding: 6px 10px; gap: 6px; flex-shrink: 0; }
+}
