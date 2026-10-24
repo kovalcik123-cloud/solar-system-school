@@ -8,6 +8,12 @@ window.LearnContent = {
     { id: 'pohyb', title: 'Pohyb vo vesmíre' },
     { id: 'obri', title: 'Vesmírni obri' }
   ],
+  // Scientific classification for lesson content; independent of rendering material types.
+  planetGroups: [
+    { id: 'terrestrial', title: 'Kamenné planéty', bodies: ['mercury', 'venus', 'earth', 'mars'] },
+    { id: 'gas-giant', title: 'Plynní obri', bodies: ['jupiter', 'saturn'] },
+    { id: 'ice-giant', title: 'Ľadoví obri', bodies: ['uranus', 'neptune'] }
+  ],
   lessons: [{
     id: 'nasa-slnecna-sustava', title: 'Naša slnečná sústava',
     objective: 'Rozlíšiš Slnko od planét a spoznáš miesto našej Zeme.',

@@ -1,6 +1,6 @@
 /* Learn owns no scene resources and never reads or writes Quiz state. */
 window.Learn = (() => {
-  let adapter, root, active = false, lesson = null, step = 0, answer = null;
+  let adapter, root, active = false, lesson = null, step = 0, stop = 0, answer = null;
   let feedback = null, completed = false, session = 0, snapshot = null, expanded = true;
   let experimentUI = null, experimentDetailsOpen = false;
   const data = window.LearnContent;
@@ -8,25 +8,77 @@ window.Learn = (() => {
   const shortExperimentLayout = window.matchMedia('(max-width: 700px) and (min-height: 521px) and (max-height: 740px)');
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
   function button(text, action, cls) { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', action); return b; }
+  const filled = value => typeof value === 'string' && value.trim() !== '';
+  const optionalText = value => value === undefined || filled(value);
+  // Scientific groups come from content (planetGroups), never from rendering types.
+  function validateGroups() {
+    const groups = data.planetGroups, ids = new Set(), bodies = new Map();
+    if (!Array.isArray(groups) || !groups.length) throw Error('Invalid planet groups');
+    for (const g of groups) {
+      if (!filled(g?.id) || ids.has(g.id) || !filled(g.title) || !Array.isArray(g.bodies) || !g.bodies.length) throw Error('Invalid planet group');
+      ids.add(g.id);
+      for (const body of g.bodies) {
+        if (!adapter.hasBody(body) || adapter.bodyInfo(body).kind !== 'planet' || bodies.has(body)) throw Error('Invalid planet group body');
+        bodies.set(body, g.id);
+      }
+    }
+    if (adapter.bodies.some(id => adapter.bodyInfo(id).kind === 'planet' && !bodies.has(id))) throw Error('Incomplete planet groups');
+    return bodies;
+  }
+  function validateTour(s, groupOf) {
+    if (s.demo || s.group !== undefined && !groupOf.has(s.group) || !Array.isArray(s.stops) || !s.stops.length) throw Error('Invalid lesson tour');
+    const bodies = new Set();
+    for (const stop of s.stops) {
+      const group = stop?.group ?? s.group;
+      if (!stop || !adapter.hasBody(stop.body) || bodies.has(stop.body) || stop.demo !== undefined || stop.view !== undefined) throw Error('Invalid tour stop');
+      if (!filled(stop.title) || !filled(stop.text) || !optionalText(stop.fact) || !optionalText(stop.note)) throw Error('Invalid tour stop text');
+      if (group !== undefined && groupOf.get(group)?.has(stop.body) !== true) throw Error('Invalid tour stop group');
+      bodies.add(stop.body);
+    }
+  }
+  function validateClassify(s, groupOf) {
+    if (s.demo || !Array.isArray(s.groups) || s.groups.length < 2 || !Array.isArray(s.items)) throw Error('Invalid lesson classification');
+    const declared = new Set(), bodies = new Set();
+    for (const g of s.groups) {
+      if (!g || !groupOf.has(g.id) || declared.has(g.id) || !filled(g.label)) throw Error('Invalid classification group');
+      declared.add(g.id);
+    }
+    for (const item of s.items) {
+      if (!item || !adapter.hasBody(item.body) || bodies.has(item.body) || !declared.has(item.group)) throw Error('Invalid classification item');
+      if (!groupOf.get(item.group).has(item.body) || !optionalText(item.hint) || !optionalText(item.confirm)) throw Error('Invalid classification answer');
+      bodies.add(item.body);
+    }
+    // Every planet of every declared group is sorted exactly once.
+    for (const id of declared) for (const body of groupOf.get(id)) if (!bodies.has(body)) throw Error('Incomplete classification');
+  }
   function validate() {
-    const ids = new Set();
+    const ids = new Set(), groupOf = new Map();
+    for (const [body, group] of validateGroups()) { if (!groupOf.has(group)) groupOf.set(group, new Set()); groupOf.get(group).add(body); }
     for (const l of data.lessons) {
       if (ids.has(l.id) || !data.topics.some(t => t.id === l.id)) throw Error('Invalid lesson ID');
       ids.add(l.id); const steps = new Set();
       for (const s of l.steps) {
-        if (steps.has(s.id) || !['intro','observe','experiment','question','summary'].includes(s.type)) throw Error('Invalid lesson step');
+        if (steps.has(s.id) || !['intro','observe','experiment','question','summary','tour','classify'].includes(s.type)) throw Error('Invalid lesson step');
         steps.add(s.id);
         if (s.demo && ( !['overview','focus'].includes(s.demo.kind) || (s.demo.kind === 'focus' && !adapter.hasBody(s.demo.body)))) throw Error('Invalid lesson demonstration');
         if (s.demo?.view && (s.demo.kind !== 'focus' || s.demo.body !== 'earth' || s.demo.view !== 'day-night')) throw Error('Invalid lesson view');
         if (s.type === 'experiment' && (s.experiment?.kind !== 'earth-day-night' || s.demo?.body !== 'earth' || s.demo?.view !== 'day-night')) throw Error('Invalid lesson experiment');
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
+        if (s.type === 'tour') validateTour(s, groupOf);
+        if (s.type === 'classify') validateClassify(s, groupOf);
       }
     }
+  }
+  // Tour and classification steps resolve their demonstration per stop; other steps keep step-level demos.
+  function stepDemo(current) {
+    if (current.type === 'tour') return { kind: 'focus', body: current.stops[stop].body };
+    if (current.type === 'classify') return { kind: 'focus', body: current.items[stop].body };
+    return current.demo || (current.type === 'summary' ? { kind: 'overview' } : null);
   }
   function cleanup() {
     session++; adapter.cancel(); experimentDetailsOpen = false;
     if (snapshot) adapter.restore(snapshot);
-    snapshot = null; lesson = null; step = 0; answer = null; feedback = null; completed = false;
+    snapshot = null; lesson = null; step = 0; stop = 0; answer = null; feedback = null; completed = false;
   }
   function leave() {
     if (!active) return;
@@ -49,13 +101,13 @@ window.Learn = (() => {
   }
   function move(index) {
     if (!active || !lesson || index < 0 || index >= lesson.steps.length) return;
-    session++; adapter.cancel(); experimentDetailsOpen = false; step = index; answer = null; feedback = null;
+    session++; adapter.cancel(); experimentDetailsOpen = false; step = index; stop = 0; answer = null; feedback = null;
     completed = lesson.steps[step].type === 'summary'; expanded = true; render(); demonstrate();
   }
   function demonstrate() {
     if (!active || !lesson) return;
     const current = lesson.steps[step];
-    const demo = current.demo || (current.type === 'summary' ? { kind: 'overview' } : null);
+    const demo = stepDemo(current);
     if (!demo) return;
     adapter.experiment.end();
     adapter.demonstrate(demo);
@@ -202,5 +254,5 @@ window.Learn = (() => {
   sheetLayout.addEventListener('change', syncResponsiveSheet);
   window.addEventListener('resize', syncResponsiveSheet);
   return { init(a) { adapter = a; root = document.getElementById('learn-root'); root.addEventListener('click', event => event.stopPropagation()); validate(); }, enter, leave, home,
-    get active() { return active; }, get inLesson() { return !!lesson; }, get state() { return { active, lesson: lesson?.id, step, answer, feedback, completed, session }; } };
+    get active() { return active; }, get inLesson() { return !!lesson; }, get state() { return { active, lesson: lesson?.id, step, stop, answer, feedback, completed, session }; } };
 })();

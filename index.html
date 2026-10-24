@@ -1904,9 +1904,24 @@
             return { begin, end, turn, reset, update, state, get active() { return !!saved; } };
         })();
 
+        // One Learn body map. Lesson IDs resolve to existing scene bodies only.
+        const learnBodies = Object.freeze({
+            sun: 'Slnko', mercury: 'Merkúr', venus: 'Venuša', earth: 'Zem', mars: 'Mars',
+            jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Urán', neptune: 'Neptún'
+        });
+        const hasLearnBody = id => typeof id === 'string' && Object.prototype.hasOwnProperty.call(learnBodies, id)
+            && planetData.some(p => p.name === learnBodies[id]);
+        function learnBodyInfo(id) {
+            if (!hasLearnBody(id)) return null;
+            const data = planetData.find(p => p.name === learnBodies[id]);
+            return Object.freeze({ id, name: data.name, texture: data.texture, kind: data.distance3D === 0 ? 'star' : 'planet' });
+        }
+
         Learn.init({
             ready: () => !!controls && document.body.classList.contains('is-ready'),
-            hasBody: id => ({ sun: 'Slnko', earth: 'Zem', jupiter: 'Jupiter' })[id] !== undefined,
+            bodies: Object.freeze(Object.keys(learnBodies)),
+            hasBody: hasLearnBody,
+            bodyInfo: learnBodyInfo,
             closeInfo: closePopup,
             exitQuiz: () => { if (isQuizMode || isQuizResults) stopQuiz(); },
             sync: () => { syncNavigationPresentation(); cameraFrameDirty = true; },
@@ -1924,8 +1939,8 @@
                 closePopup();
                 if (demo.kind === 'overview') { if (!areOrbitsActive) toggleOrbit(); showSystemOverview(); }
                 else {
-                    const name = ({ sun: 'Slnko', earth: 'Zem', jupiter: 'Jupiter' })[demo.body];
-                    const mesh = planets.find(p => p.userData.name === name);
+                    const name = learnBodyInfo(demo.body)?.name;
+                    const mesh = name && planets.find(p => p.userData.name === name);
                     if (!mesh) return;
                     if (areOrbitsActive) toggleOrbit();
                     selectedNavigationPlanet = name; focusPlanet(mesh, true, demo.view);
