@@ -2,10 +2,13 @@
 window.Learn = (() => {
   let adapter, root, active = false, lesson = null, step = 0, stop = 0, answer = null;
   let feedback = null, completed = false, session = 0, snapshot = null, expanded = true;
-  let experimentUI = null, experimentDetailsOpen = false;
+  let experimentUI = null, experimentDetailsOpen = false, notice = null, liveStatus = null, tourReading = false;
   const data = window.LearnContent;
   const sheetLayout = window.matchMedia('(max-width: 900px)');
   const shortExperimentLayout = window.matchMedia('(max-width: 700px) and (min-height: 521px) and (max-height: 740px)');
+  // Short screens open tours collapsed so the planet stays visible; short landscape tablets use a side panel.
+  const compactTourLayout = window.matchMedia('(max-width: 900px) and (max-height: 740px)');
+  const sideTourLayout = window.matchMedia('(min-width: 701px) and (max-width: 900px) and (max-height: 600px)');
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
   function button(text, action, cls) { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', action); return b; }
   const filled = value => typeof value === 'string' && value.trim() !== '';
@@ -15,7 +18,7 @@ window.Learn = (() => {
     const groups = data.planetGroups, ids = new Set(), bodies = new Map();
     if (!Array.isArray(groups) || !groups.length) throw Error('Invalid planet groups');
     for (const g of groups) {
-      if (!filled(g?.id) || ids.has(g.id) || !filled(g.title) || !Array.isArray(g.bodies) || !g.bodies.length) throw Error('Invalid planet group');
+      if (!filled(g?.id) || ids.has(g.id) || !filled(g.title) || !filled(g.label) || !Array.isArray(g.bodies) || !g.bodies.length) throw Error('Invalid planet group');
       ids.add(g.id);
       for (const body of g.bodies) {
         if (!adapter.hasBody(body) || adapter.bodyInfo(body).kind !== 'planet' || bodies.has(body)) throw Error('Invalid planet group body');
@@ -60,6 +63,8 @@ window.Learn = (() => {
       for (const s of l.steps) {
         if (steps.has(s.id) || !['intro','observe','experiment','question','summary','tour','classify'].includes(s.type)) throw Error('Invalid lesson step');
         steps.add(s.id);
+        // A short visible label keeps the full next label as its accessible name.
+        if (!optionalText(s.nextShort) || s.nextShort !== undefined && !filled(s.next)) throw Error('Invalid lesson step');
         if (s.demo && ( !['overview','focus'].includes(s.demo.kind) || (s.demo.kind === 'focus' && !adapter.hasBody(s.demo.body)))) throw Error('Invalid lesson demonstration');
         if (s.demo?.view && (s.demo.kind !== 'focus' || s.demo.body !== 'earth' || s.demo.view !== 'day-night')) throw Error('Invalid lesson view');
         if (s.type === 'experiment' && (s.experiment?.kind !== 'earth-day-night' || s.demo?.body !== 'earth' || s.demo?.view !== 'day-night')) throw Error('Invalid lesson experiment');
@@ -75,10 +80,58 @@ window.Learn = (() => {
     if (current.type === 'classify') return { kind: 'focus', body: current.items[stop].body };
     return current.demo || (current.type === 'summary' ? { kind: 'overview' } : null);
   }
+  // Tour stops are numbered across every tour step of the lesson, e.g. "Planéta 3 z 8".
+  function tourPosition() {
+    let before = 0, total = 0;
+    lesson.steps.forEach((s, index) => { if (s.type === 'tour') { if (index < step) before += s.stops.length; total += s.stops.length; } });
+    return { number: before + stop + 1, total };
+  }
+  const groupLabel = body => data.planetGroups.find(g => g.bodies.includes(body))?.label;
+  // The adjacent position in reading order; entering a tour backwards lands on its last stop.
+  function neighbour(direction) {
+    const current = lesson.steps[step];
+    if (current.type === 'tour' && current.stops[stop + direction]) return { step, stop: stop + direction, title: current.stops[stop + direction].title };
+    const target = lesson.steps[step + direction];
+    if (!target) return null;
+    if (target.type !== 'tour') return { step: step + direction, stop: 0, title: null };
+    const index = direction > 0 ? 0 : target.stops.length - 1;
+    return { step: step + direction, stop: index, title: target.stops[index].title };
+  }
+  function go(target, focusKey) {
+    if (target.step === step) moveStop(target.stop, focusKey); else move(target.step, target.stop);
+  }
+  function announce(text) {
+    if (!liveStatus) return;
+    liveStatus.textContent = '';
+    liveStatus.textContent = text;
+  }
+  function moveStop(index, focusKey) {
+    const current = active && lesson?.steps[step];
+    if (current?.type !== 'tour' || !current.stops[index]) return;
+    session++; adapter.cancel(); stop = index; notice = null; render(focusKey); demonstrate();
+    const position = tourPosition();
+    announce(`${current.stops[stop].title}, planéta ${position.number} z ${position.total}, ${groupLabel(current.stops[stop].body)}.`);
+  }
+  // Scene and top-bar picks during a tour never let the camera show a different planet than the panel.
+  function selectBody(id) {
+    const current = active && lesson?.steps[step];
+    if (current?.type !== 'tour' || !adapter.hasBody(id)) return false;
+    const index = current.stops.findIndex(s => s.body === id);
+    if (index >= 0) { moveStop(index); return true; }
+    const name = adapter.bodyInfo(id).name, here = current.stops[stop].title;
+    const elsewhere = lesson.steps.findIndex(s => s.type === 'tour' && s.stops.some(x => x.body === id));
+    notice = elsewhere >= 0
+      ? { text: `${name} navštívime v časti „${lesson.steps[elsewhere].title}“. Teraz je na rade ${here}.`, target: { step: elsewhere, stop: lesson.steps[elsewhere].stops.findIndex(x => x.body === id), title: name } }
+      : { text: `${name} nie je zastávkou tejto expedície. Teraz je na rade ${here}.`, target: null };
+    // The view returns to the planet the panel describes, so camera and text never disagree.
+    render(false); demonstrate(); announce(notice.text);
+    return true;
+  }
   function cleanup() {
     session++; adapter.cancel(); experimentDetailsOpen = false;
     if (snapshot) adapter.restore(snapshot);
-    snapshot = null; lesson = null; step = 0; stop = 0; answer = null; feedback = null; completed = false;
+    snapshot = null; lesson = null; step = 0; stop = 0; answer = null; feedback = null; completed = false; notice = null;
+    if (liveStatus) liveStatus.textContent = '';
   }
   function leave() {
     if (!active) return;
@@ -97,12 +150,14 @@ window.Learn = (() => {
   function start(id) {
     if (!active) return;
     const found = data.lessons.find(l => l.id === id); if (!found) return;
-    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; render();
+    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; tourReading = false; render();
   }
-  function move(index) {
+  function move(index, stopIndex = 0) {
     if (!active || !lesson || index < 0 || index >= lesson.steps.length) return;
-    session++; adapter.cancel(); experimentDetailsOpen = false; step = index; stop = 0; answer = null; feedback = null;
-    completed = lesson.steps[step].type === 'summary'; expanded = true; render(); demonstrate();
+    const target = lesson.steps[index];
+    session++; adapter.cancel(); experimentDetailsOpen = false; step = index; answer = null; feedback = null; notice = null;
+    stop = target.type === 'tour' && target.stops[stopIndex] ? stopIndex : 0;
+    completed = lesson.steps[step].type === 'summary'; expanded = target.type === 'tour' && compactTourLayout.matches ? tourReading : true; render(); demonstrate();
   }
   function demonstrate() {
     if (!active || !lesson) return;
@@ -129,27 +184,37 @@ window.Learn = (() => {
     const announcement = state.active && !state.busy ? `${state.turns ? 'Otočenie dokončené.' : 'Pokus je pripravený.'} Označené miesto: ${state.day ? 'deň' : 'noc'}.` : '';
     if (experimentUI.status.textContent !== announcement) experimentUI.status.textContent = announcement;
   }
-  function render() {
+  function render(focusKey) {
     experimentUI = null;
+    const tour = !!lesson && lesson.steps[step].type === 'tour' ? lesson.steps[step] : null;
     const compactExperiment = !!lesson && lesson.steps[step].type === 'experiment' && shortExperimentLayout.matches;
     root.replaceChildren(); root.hidden = false; root.inert = false;
     document.body.classList.add('is-learn'); root.className = lesson ? 'learn-panel' : 'learn-home';
     root.classList.toggle('is-expanded', expanded);
     root.classList.toggle('is-experiment', !!lesson && lesson.steps[step].type === 'experiment');
+    root.classList.toggle('is-tour', !!tour);
+    if (tour && sideTourLayout.matches) root.dataset.layout = 'side'; else delete root.dataset.layout;
     const header = el('header', null, 'learn-header');
-    const heading = el('h2', compactExperiment ? 'Pokus so Zemou' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
+    const heading = el('h2', compactExperiment ? 'Pokus so Zemou' : tour ? tour.stops[stop].title : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
     heading.id = 'learn-heading'; heading.tabIndex = -1;
     const titles = el('div'), eyebrow = el('p', null, 'learn-eyebrow');
     if (lesson) {
-      eyebrow.append(el('span', lesson.title, 'learn-lesson-title'), el('span', `Krok ${step + 1} zo ${lesson.steps.length}`, 'learn-step-full'));
+      eyebrow.append(el('span', tour ? tour.title : lesson.title, 'learn-lesson-title'), el('span', `Krok ${step + 1} zo ${lesson.steps.length}`, 'learn-step-full'));
       const compact = el('span', `${step + 1}/${lesson.steps.length}`, 'learn-step-compact');
       compact.setAttribute('aria-hidden', 'true'); eyebrow.append(compact);
     } else eyebrow.textContent = 'Uč sa · Vesmír na dosah';
-    titles.append(eyebrow, heading); header.append(titles);
+    titles.append(eyebrow, heading);
+    if (tour) {
+      const position = tourPosition(), meta = el('p', `Planéta ${position.number} z ${position.total}`, 'learn-tour-position');
+      const category = el('span', groupLabel(tour.stops[stop].body), 'learn-category');
+      category.dataset.group = data.planetGroups.find(g => g.bodies.includes(tour.stops[stop].body)).id;
+      meta.append(category); titles.append(meta);
+    }
+    header.append(titles);
     if (lesson) {
       const toggle = button(compactExperiment ? (experimentDetailsOpen ? 'Menej textu' : 'Vysvetlenie') : expanded ? 'Menej' : 'Viac', () => {
         if (compactExperiment) { experimentDetailsOpen = !experimentDetailsOpen; render(); root.querySelector('.learn-expand').focus({ preventScroll: true }); }
-        else { expanded = !expanded; render(); }
+        else { expanded = !expanded; if (tour) tourReading = expanded; render(); }
       }, 'learn-expand');
       toggle.setAttribute('aria-expanded', String(compactExperiment ? experimentDetailsOpen : expanded));
       toggle.setAttribute('aria-controls', compactExperiment ? 'learn-experiment-details' : 'learn-body'); header.append(toggle);
@@ -163,6 +228,11 @@ window.Learn = (() => {
         progress.append(segment);
       });
       root.append(progress);
+    }
+    if (notice) {
+      const box = el('div', null, 'learn-notice'); box.append(el('p', notice.text));
+      if (notice.target) { const target = notice.target; box.append(button(`Prejsť na zastávku: ${target.title}`, () => go(target))); }
+      root.append(box);
     }
     const body = el('div', null, 'learn-body'); body.id = 'learn-body';
     if (!lesson) {
@@ -185,6 +255,24 @@ window.Learn = (() => {
       if (s.text && s.type !== 'summary' && s.type !== 'experiment') body.append(el('p', s.text));
       if (s.type === 'intro') { body.append(el('h3', 'Čo sa naučíš'), el('p', lesson.objective), el('p', lesson.limitation, 'learn-note')); }
       if (s.demo && s.type !== 'experiment') body.append(button('Zopakovať ukážku', demonstrate));
+      if (tour) {
+        const current = tour.stops[stop], strip = el('div', null, 'learn-tour-strip');
+        strip.setAttribute('role', 'group'); strip.setAttribute('aria-label', `Planéty v časti ${tour.title}`);
+        const first = tourPosition().number - stop;
+        tour.stops.forEach((item, index) => {
+          const thumb = el('span', null, 'planet-thumbnail'); thumb.setAttribute('aria-hidden', 'true');
+          thumb.style.backgroundImage = `url('${adapter.bodyInfo(item.body).texture}')`;
+          const pick = button(null, () => moveStop(index, `stop-${index}`), 'learn-tour-stop');
+          pick.append(thumb, el('span', item.title, 'learn-tour-stop-name'));
+          pick.dataset.focus = `stop-${index}`; pick.setAttribute('aria-label', `${item.title}, planéta ${first + index} z ${tourPosition().total}`);
+          if (index === stop) pick.setAttribute('aria-current', 'step');
+          strip.append(pick);
+        });
+        body.append(strip, el('p', current.text));
+        if (current.fact) { const fact = el('div', null, 'learn-fact'); fact.append(el('p', 'Zaujímavosť', 'learn-fact-label'), el('p', current.fact)); body.append(fact); }
+        if (current.note) body.append(el('p', current.note, 'learn-note'));
+        body.append(button('Vrátiť pohľad na planétu', demonstrate));
+      }
       if (s.type === 'experiment') {
         const light = el('p', null, 'learn-daynight'); light.setAttribute('aria-label', 'Stav označeného miesta');
         const explanation = el('p'), visibility = el('p', null, 'learn-location-note');
@@ -234,14 +322,30 @@ window.Learn = (() => {
     root.append(body);
     if (lesson && lesson.steps[step].type !== 'summary') {
       const footer = el('footer', null, 'learn-footer');
+      const s = lesson.steps[step], back = neighbour(-1), forward = neighbour(1);
       footer.append(button('Témy', home));
-      if (step > 0) footer.append(button('Späť', () => move(step - 1)));
-      if (step < lesson.steps.length - 1) { const next = button(lesson.steps[step].next || 'Ďalej', () => move(step + 1), 'learn-primary'); next.disabled = lesson.steps[step].type === 'question' && feedback !== 'correct'; footer.append(next); }
+      if (back) {
+        const previous = button(back.title ? `← ${back.title}` : 'Späť', () => go(back, 'back'));
+        if (back.title) previous.setAttribute('aria-label', `Predchádzajúca planéta: ${back.title}`);
+        if (tour) previous.dataset.focus = 'back';
+        footer.append(previous);
+      }
+      if (forward) {
+        // Within a tour, and from a step leading into one, the button names the next planet.
+        const named = forward.title && (forward.step === step || !s.next);
+        const next = button(named ? `Ďalej: ${forward.title}` : s.nextShort || s.next || 'Ďalej', () => go(forward, 'next'), 'learn-primary');
+        if (named) next.setAttribute('aria-label', `Ďalšia planéta: ${forward.title}`);
+        else if (s.nextShort) next.setAttribute('aria-label', s.next);
+        if (tour) next.dataset.focus = 'next';
+        next.disabled = s.type === 'question' && feedback !== 'correct'; footer.append(next);
+      }
       root.append(footer);
     }
     const collapsed = lesson && !expanded && sheetLayout.matches && !compactExperiment;
     body.inert = !!collapsed; adapter.sync(); syncExperiment();
-    heading.focus({ preventScroll: true });
+    if (focusKey === false) return;
+    const preferred = focusKey && root.querySelector(`[data-focus="${focusKey}"]:not(:disabled)`);
+    (preferred && !preferred.closest('[inert]') ? preferred : heading).focus({ preventScroll: true });
   }
   function syncResponsiveSheet() {
     if (!active) return;
@@ -251,8 +355,12 @@ window.Learn = (() => {
     body.inert = collapsed; adapter.sync();
   }
   shortExperimentLayout.addEventListener('change', () => { if (active && lesson?.steps[step].type === 'experiment') render(); });
+  sideTourLayout.addEventListener('change', () => { if (active && lesson?.steps[step].type === 'tour') render(false); });
   sheetLayout.addEventListener('change', syncResponsiveSheet);
   window.addEventListener('resize', syncResponsiveSheet);
-  return { init(a) { adapter = a; root = document.getElementById('learn-root'); root.addEventListener('click', event => event.stopPropagation()); validate(); }, enter, leave, home,
-    get active() { return active; }, get inLesson() { return !!lesson; }, get state() { return { active, lesson: lesson?.id, step, stop, answer, feedback, completed, session }; } };
+  return { init(a) {
+      adapter = a; root = document.getElementById('learn-root'); root.addEventListener('click', event => event.stopPropagation()); validate();
+      liveStatus = el('p', null, 'learn-live'); liveStatus.setAttribute('role', 'status'); liveStatus.setAttribute('aria-atomic', 'true'); document.body.append(liveStatus);
+    }, enter, leave, home, selectBody,
+    get active() { return active; }, get inLesson() { return !!lesson; }, get state() { return { active, lesson: lesson?.id, step, stop, answer, feedback, completed, session, notice: notice?.text ?? null }; } };
 })();

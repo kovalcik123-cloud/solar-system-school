@@ -694,7 +694,7 @@
             if (targetMesh) {
                 if (isQuizMode) {
                     handleQuizPick(targetMesh.userData);
-                } else {
+                } else if (!Learn.selectBody(learnBodyId(name))) {
                     if (areOrbitsActive) toggleOrbit();
                     showPopup(targetMesh.userData);
                     focusPlanet(targetMesh);
@@ -1272,7 +1272,8 @@
             const panel = document.getElementById(Learn.active ? 'learn-root' : 'info-card');
             const info = panel.getBoundingClientRect();
             const toolbar = document.querySelector('.simulation-controls').getBoundingClientRect();
-            const mobile = Learn.active ? matchMedia('(max-width: 900px)').matches : mobileInfoLayout.matches;
+            // A Learn side panel (short landscape tours) frames like desktop; otherwise Learn uses the bottom sheet below 900px.
+            const mobile = Learn.active ? matchMedia('(max-width: 900px)').matches && panel.dataset.layout !== 'side' : mobileInfoLayout.matches;
             const left = mobileInfoLayout.matches ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
             const visible = Learn.active || panel.style.display === 'block';
             const right = !mobile && visible ? info.left - 20 : innerWidth - 20;
@@ -1616,7 +1617,7 @@
                 const focusMesh = target.userData.parent || target;
 
                 if (isQuizMode) handleQuizPick(data);
-                else { 
+                else if (!Learn.selectBody(learnBodyId(data.name))) { 
                     if (areOrbitsActive) toggleOrbit(); 
                     showPopup(data); 
                     focusPlanet(focusMesh);
@@ -1911,6 +1912,7 @@
         });
         const hasLearnBody = id => typeof id === 'string' && Object.prototype.hasOwnProperty.call(learnBodies, id)
             && planetData.some(p => p.name === learnBodies[id]);
+        const learnBodyId = name => Object.keys(learnBodies).find(id => learnBodies[id] === name) ?? null;
         function learnBodyInfo(id) {
             if (!hasLearnBody(id)) return null;
             const data = planetData.find(p => p.name === learnBodies[id]);

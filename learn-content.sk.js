@@ -3,16 +3,16 @@ window.LearnContent = {
   topics: [
     { id: 'nasa-slnecna-sustava', title: 'Naša slnečná sústava', description: 'Spoznaj našu vesmírnu rodinu a pozri sa zblízka na Slnko a Zem.', minutes: 3 },
     { id: 'slnko', title: 'Slnko – naša hviezda', description: 'Preskúmaj svetlo zo Slnka a zisti, prečo sa na Zemi strieda deň a noc.', minutes: 4 },
-    { id: 'planety', title: 'Spoznaj planéty' },
+    { id: 'planety', title: 'Spoznaj planéty', description: 'Vydaj sa na expedíciu ku všetkým ôsmim planétam a zisti, čím sa od seba líšia.', minutes: 5 },
     { id: 'zem-mesiac', title: 'Zem a Mesiac' },
     { id: 'pohyb', title: 'Pohyb vo vesmíre' },
     { id: 'obri', title: 'Vesmírni obri' }
   ],
   // Scientific classification for lesson content; independent of rendering material types.
   planetGroups: [
-    { id: 'terrestrial', title: 'Kamenné planéty', bodies: ['mercury', 'venus', 'earth', 'mars'] },
-    { id: 'gas-giant', title: 'Plynní obri', bodies: ['jupiter', 'saturn'] },
-    { id: 'ice-giant', title: 'Ľadoví obri', bodies: ['uranus', 'neptune'] }
+    { id: 'terrestrial', title: 'Kamenné planéty', label: 'Kamenná planéta', bodies: ['mercury', 'venus', 'earth', 'mars'] },
+    { id: 'gas-giant', title: 'Plynní obri', label: 'Plynný obor', bodies: ['jupiter', 'saturn'] },
+    { id: 'ice-giant', title: 'Ľadoví obri', label: 'Ľadový obor', bodies: ['uranus', 'neptune'] }
   ],
   lessons: [{
     id: 'nasa-slnecna-sustava', title: 'Naša slnečná sústava',
@@ -39,6 +39,28 @@ window.LearnContent = {
       { id: 'pokus', type: 'experiment', title: 'Otoč Zem a sleduj miesto', text: 'Sleduj označené miesto. Tlačidlom otočíš Zem o štvrtinu otočky okolo jej osi. Miesto sa presúva medzi svetlom a tmou. Pohyb kamery prstom či myšou mení iba tvoj pohľad.', note: 'Obeh okolo Slnka sme na chvíľu zastavili. Otáčanie Zeme a jej obeh sú dva rôzne pohyby. Skutočný deň trvá približne 24 hodín; táto animácia nemeria skutočný čas.', demo: { kind: 'focus', body: 'earth', view: 'day-night' }, experiment: { kind: 'earth-day-night' } },
       { id: 'otazka', type: 'question', title: 'Prečo prichádza noc?', text: 'Prečo sa na Zemi strieda deň a noc?', options: [{ id: 'orbit', text: 'Pretože Zem obieha okolo Slnka.' }, { id: 'rotation', text: 'Pretože Zem sa otáča okolo svojej osi.' }, { id: 'sun-off', text: 'Pretože Slnko na noc prestane svietiť.' }], correct: 'rotation', correctFeedback: 'Správne! Zem sa otáča okolo svojej osi. Naše miesto sa tak obracia k slnečnému svetlu a potom od neho.', incorrectFeedback: 'Skús to znova. Slnko svieti stále. Deň a noc sa striedajú preto, že Zem sa otáča okolo svojej osi, nie pre jej obeh okolo Slnka.' },
       { id: 'zaver', type: 'summary', title: 'Už vieš, prečo sa strieda deň a noc!', ideas: ['Slnko je hviezda a dáva Zemi svetlo a energiu.', 'Zem sa otáča okolo svojej osi. Miesta na povrchu sa obracajú k svetlu a od neho – strieda sa deň a noc.', 'Otáčanie okolo osi a obeh okolo Slnka sú rôzne pohyby.'], text: 'Pokračuj v objavovaní alebo si vyskúšaj kvíz o všetkých ôsmich planétach.' }
+    ]
+  }, {
+    id: 'planety', title: 'Spoznaj planéty',
+    objective: 'Spoznáš všetkých osem planét a rozlíšiš kamenné planéty, plynných obrov a ľadových obrov.',
+    limitation: 'Model je názorný. Veľkosti planét, vzdialenosti a rýchlosti nie sú v spoločnej mierke – obri sú v skutočnosti oveľa väčší, ako ich tu vidíš. Model nezobrazuje sklon osí planét ani všetky ich mesiace.',
+    sources: ['https://science.nasa.gov/solar-system/planets/'],
+    steps: [
+      { id: 'uvod', type: 'intro', title: 'Vesmírna expedícia sa začína!', text: 'Navštívime všetkých osem planét slnečnej sústavy. Začneme pri Merkúri, ktorý je najbližšie k Slnku, a skončíme pri vzdialenom Neptúne.', next: 'Štart expedície' },
+      { id: 'prehlad', type: 'observe', title: 'Osem planét okolo Slnka', text: 'Planéty obiehajú okolo Slnka v tomto poradí: Merkúr, Venuša, Zem, Mars, Jupiter, Saturn, Urán a Neptún. Prvé štyri sú menšie kamenné planéty blízko Slnka. Za nimi obiehajú štyria obri.', demo: { kind: 'overview' } },
+      { id: 'vnutorne', type: 'tour', title: 'Kamenné planéty', group: 'terrestrial', stops: [
+        { body: 'mercury', title: 'Merkúr', text: 'Merkúr je najmenšia planéta a obieha najbližšie k Slnku. Takmer nemá atmosféru, ktorá by ho prikryla ako perina.', fact: 'Cez deň sa jeho povrch rozpáli asi na 430 °C, no v noci teplota klesne až na −180 °C.' },
+        { body: 'venus', title: 'Venuša', text: 'Venuša je takmer taká veľká ako Zem. Obaľuje ju hustá atmosféra z oxidu uhličitého a hrubé oblaky, ktoré zadržiavajú teplo.', fact: 'Je to najhorúcejšia planéta – asi 465 °C. Je horúcejšia ako Merkúr, hoci je od Slnka ďalej.' },
+        { body: 'earth', title: 'Zem', text: 'Zem je náš domov. Je to jediná planéta, o ktorej vieme, že na nej žijú rastliny, zvieratá a ľudia. Na jej povrchu je kvapalná voda.', fact: 'Približne 70 % povrchu Zeme pokrýva voda.' },
+        { body: 'mars', title: 'Mars', text: 'Mars sa volá Červená planéta. Jeho povrch pokrýva prach a kamene so zhrdzaveným železom, preto je červenkastý.', fact: 'Je tu Olympus Mons, najvyššia známa sopka v slnečnej sústave. Je asi 2,5-krát vyššia ako Mount Everest.', note: 'Mars má dva malé mesiace. V modeli vidíš iba jeden z nich.' }
+      ] },
+      { id: 'vonkajsie', type: 'tour', title: 'Obri slnečnej sústavy', next: 'Dokončiť expedíciu', nextShort: 'Dokončiť →', stops: [
+        { body: 'jupiter', title: 'Jupiter', text: 'Jupiter je najväčšia planéta. Je to plynný obor – tvorí ho najmä vodík a hélium a nemá pevný povrch, na ktorý by sa dalo pristáť.', fact: 'Veľká červená škvrna na Jupiteri je obrovská búrka, ktorá je väčšia ako celá Zem.', note: 'V modeli je Jupiter zmenšený. Má veľa mesiacov, no vidíš iba jeden – Európu.' },
+        { body: 'saturn', title: 'Saturn', text: 'Saturn je druhá najväčšia planéta a tiež plynný obor. Je známy svojimi nádhernými prstencami.', fact: 'Prstence tvoria nespočetné kúsky ľadu a kameňa. Prstence majú aj Jupiter, Urán a Neptún, no sú oveľa slabšie.', note: 'Saturn má veľa mesiacov. Model ich nezobrazuje.' },
+        { body: 'uranus', title: 'Urán', text: 'Urán je ľadový obor. Pod atmosférou ukrýva veľa vody, čpavku a metánu – vedci tieto látky nazývajú ľady. Metán mu dáva modrozelenú farbu.', fact: 'Urán je naklonený takmer na bok. Okolo Slnka sa pohybuje, akoby sa kotúľal.', note: 'Tento veľký sklon v našom modeli neuvidíš.' },
+        { body: 'neptune', title: 'Neptún', text: 'Neptún je ľadový obor a najvzdialenejšia planéta od Slnka. Jeden obeh okolo Slnka mu trvá asi 165 rokov.', fact: 'Fúkajú tu najsilnejšie vetry v slnečnej sústave – rýchlejšie ako 2 000 km/h.' }
+      ] },
+      { id: 'zaver', type: 'summary', title: 'Výborne! Expedícia je na konci.', ideas: ['Okolo Slnka obieha osem planét – od Merkúra po Neptún.', 'Kamenné planéty Merkúr, Venuša, Zem a Mars sú menšie, majú pevný povrch a sú bližšie k Slnku.', 'Plynní obri Jupiter a Saturn sú najväčšie planéty a nemajú pevný povrch.', 'Ľadoví obri Urán a Neptún sú najďalej od Slnka a ukrývajú veľa vody, čpavku a metánu.'], text: 'Pokračuj v objavovaní alebo si vyskúšaj kvíz o všetkých ôsmich planétach.' }
     ]
   }]
 };

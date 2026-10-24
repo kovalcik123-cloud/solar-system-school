@@ -125,3 +125,46 @@ body.is-learn #info-card { display: none !important; }
  .learn-panel.is-experiment .learn-experiment-details:focus-visible { outline: 2px solid #8bd8ff; outline-offset: -2px; }
  .learn-panel.is-experiment .learn-footer { padding: 6px 10px; gap: 6px; flex-shrink: 0; }
 }
+
+/* Phase 6E.2: planet tour – position, scientific category, stop strip, facts and selection notice. */
+.learn-tour-position { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 0; font-size: 14px; color: #c1d7e5; }
+.learn-category { display: inline-block; padding: 2px 9px; border: 1px solid #44aadd66; border-radius: 7px; background: #44aadd26; color: #e8f2fa; font-size: 13px; }
+.learn-category[data-group="terrestrial"] { border-color: #d8a77299; background: #c9925a24; color: #f3d9bd; }
+.learn-category[data-group="gas-giant"] { border-color: #e0c08599; background: #d9b36a24; color: #f5e2b8; }
+.learn-category[data-group="ice-giant"] { border-color: #7ccbe699; background: #5fb8d924; color: #c8eefb; }
+.learn-tour-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 14px; }
+#learn-root .learn-tour-stop { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; min-height: 66px; padding: 6px 2px; font-size: 13px; }
+.learn-tour-stop .planet-thumbnail { width: 34px; height: 34px; }
+#learn-root .learn-tour-stop[aria-current="step"] { border-color: #8bd8ff; background: #44aadd2e; color: #b5ebff; font-weight: 600; }
+.learn-tour-stop[aria-current="step"] .planet-thumbnail { outline: 2px solid #8bd8ff; outline-offset: 2px; }
+.learn-tour-stop-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.learn-fact { margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid #e8c46a; border-radius: 10px; background: #ffd56a12; }
+.learn-fact p { margin: 0; }
+.learn-fact .learn-fact-label { margin-bottom: 2px; color: #f5dc96; font-size: 13px; font-weight: 700; letter-spacing: .03em; }
+.learn-notice { flex-shrink: 0; margin: 0 20px 12px; padding: 10px 12px; border: 1px solid #e3c08a88; border-radius: 10px; background: #e3c08a14; color: #f3dfbf; }
+.learn-notice p { margin: 0; }
+.learn-notice button { margin-top: 8px; }
+.learn-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 700px) {
+ .learn-tour-position { margin-top: 4px; font-size: 13px; }
+ .learn-tour-strip { gap: 4px; margin-bottom: 10px; }
+ #learn-root .learn-tour-stop { min-height: 58px; padding: 4px 2px; font-size: 12px; }
+ .learn-tour-stop .planet-thumbnail { width: 30px; height: 30px; }
+ .learn-notice { margin: 0 14px 10px; }
+}
+/* Short landscape tablets (701–900px wide): tours sit beside the planet instead of covering it. */
+@media (min-width: 701px) and (max-width: 900px) and (max-height: 600px) {
+ #learn-root.learn-panel[data-layout="side"] { top: calc(124px + env(safe-area-inset-top)); bottom: calc(98px + env(safe-area-inset-bottom)); left: auto; right: 12px; width: 300px; max-height: none; }
+ [data-layout="side"] .learn-header { padding: 8px 12px; gap: 6px; }
+ #learn-root[data-layout="side"] h2 { margin-top: 2px; font-size: 18px; }
+ [data-layout="side"] .learn-tour-position { margin-top: 2px; font-size: 12px; }
+ [data-layout="side"] .learn-progress { margin: 0 12px 6px; }
+ [data-layout="side"] .learn-notice { margin: 0 12px 8px; }
+ [data-layout="side"] .learn-body { padding: 0 12px 12px; }
+ [data-layout="side"] .learn-footer { flex-wrap: nowrap; padding: 6px 12px; gap: 6px; }
+ [data-layout="side"] .learn-eyebrow { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+ [data-layout="side"] .learn-header .learn-tour-position { gap: 2px 6px; }
+ [data-layout="side"] .learn-category { padding: 1px 6px; font-size: 12px; }
+ #learn-root[data-layout="side"] .learn-header button, #learn-root[data-layout="side"] .learn-footer button { padding: 8px; font-size: 13px; white-space: nowrap; }
+ #learn-root[data-layout="side"] .learn-footer .learn-primary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
