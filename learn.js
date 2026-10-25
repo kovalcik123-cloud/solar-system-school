@@ -16,6 +16,15 @@ window.Learn = (() => {
   function button(text, action, cls) { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', action); return b; }
   // Learn-only camera views and the single body each one supports.
   const views = Object.freeze({ 'day-night': 'earth', 'earth-moon': 'earth' });
+  // Each experiment kind runs in exactly one Earth view; the engine comes from the adapter's registry.
+  const experimentViews = Object.freeze({ 'earth-day-night': 'day-night', 'moon-phases': 'earth-moon' });
+  const dayNight = s => s?.type === 'experiment' && s.experiment.kind === 'earth-day-night';
+  const experimentOf = s => s?.type === 'experiment' ? adapter.experiments[s.experiment.kind] : null;
+  // Lit part of the Moon disc as seen from Earth: the limb on the lit side plus the terminator ellipse.
+  function phasePath(fraction, litRight, r = 46) {
+    const k = Math.min(1, Math.max(0, fraction)), rx = r * Math.abs(1 - 2 * k);
+    return `M 0 ${-r} A ${r} ${r} 0 0 ${litRight ? 1 : 0} 0 ${r} A ${rx.toFixed(2)} ${r} 0 0 ${(k > 0.5) === litRight ? 1 : 0} 0 ${-r} Z`;
+  }
   const filled = value => typeof value === 'string' && value.trim() !== '';
   const optionalText = value => value === undefined || filled(value);
   // Scientific groups come from content (planetGroups), never from rendering types.
@@ -72,7 +81,7 @@ window.Learn = (() => {
         if (!optionalText(s.nextShort) || s.nextShort !== undefined && !filled(s.next)) throw Error('Invalid lesson step');
         if (s.demo && ( !['overview','focus'].includes(s.demo.kind) || (s.demo.kind === 'focus' && !adapter.hasBody(s.demo.body)))) throw Error('Invalid lesson demonstration');
         if (s.demo?.view && (s.demo.kind !== 'focus' || !Object.prototype.hasOwnProperty.call(views, s.demo.view) || views[s.demo.view] !== s.demo.body)) throw Error('Invalid lesson view');
-        if (s.type === 'experiment' && (s.experiment?.kind !== 'earth-day-night' || s.demo?.body !== 'earth' || s.demo?.view !== 'day-night')) throw Error('Invalid lesson experiment');
+        if (s.type === 'experiment' && (!Object.prototype.hasOwnProperty.call(experimentViews, s.experiment?.kind) || !adapter.experiments?.[s.experiment.kind] || s.demo?.body !== 'earth' || s.demo?.view !== experimentViews[s.experiment.kind])) throw Error('Invalid lesson experiment');
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
         if (s.type === 'tour') validateTour(s, groupOf);
         if (s.type === 'classify') validateClassify(s, groupOf);
@@ -191,7 +200,7 @@ window.Learn = (() => {
   function leave() {
     if (!active) return;
     cleanup(); active = false; root.hidden = true; root.inert = true;
-    document.body.classList.remove('is-learn', 'is-learn-classify'); adapter.sync();
+    document.body.classList.remove('is-learn', 'is-learn-classify', 'is-learn-moon'); adapter.sync();
     document.getElementById('explore-nav').focus({ preventScroll: true });
   }
   function home() {
@@ -221,16 +230,17 @@ window.Learn = (() => {
     const current = lesson.steps[step];
     const demo = stepDemo(current);
     if (!demo) return;
-    adapter.experiment.end();
+    Object.values(adapter.experiments).forEach(experiment => experiment.end());
     adapter.demonstrate(demo);
     if (current.type === 'experiment') {
       const owner = session;
-      adapter.experiment.begin(current.experiment, () => { if (active && session === owner) syncExperiment(); });
+      experimentOf(current).begin(current.experiment, () => { if (active && session === owner) syncExperiment(); });
     }
   }
   function syncExperiment() {
     if (!experimentUI || !active || lesson?.steps[step].type !== 'experiment') return;
-    const state = adapter.experiment.state();
+    const state = experimentOf(lesson.steps[step]).state();
+    if (experimentUI.kind === 'moon-phases') { syncMoonPhases(state); return; }
     experimentUI.turn.disabled = !state.active || state.busy;
     experimentUI.reset.disabled = !state.active;
     experimentUI.light.textContent = state.active ? (state.day ? 'DEŇ' : 'NOC') : 'Pripravujeme pokus…';
@@ -241,19 +251,34 @@ window.Learn = (() => {
     const announcement = state.active && !state.busy ? `${state.turns ? 'Otočenie dokončené.' : 'Pokus je pripravený.'} Označené miesto: ${state.day ? 'deň' : 'noc'}.` : '';
     if (experimentUI.status.textContent !== announcement) experimentUI.status.textContent = announcement;
   }
+  // Presentation only: the drawing, name and percentage come from the experiment's model geometry.
+  function syncMoonPhases(state) {
+    const ui = experimentUI;
+    ui.advance.disabled = !state.active || state.busy; ui.reset.disabled = !state.active;
+    if (!state.active) { ui.name.textContent = 'Pripravujeme pokus…'; ui.fraction.textContent = ''; ui.position.textContent = ''; return; }
+    const percent = Math.round(state.fraction * 100), name = state.name ?? 'Mesiac sa posúva…';
+    ui.lit.setAttribute('d', phasePath(state.fraction, state.litRight));
+    ui.name.textContent = name;
+    ui.fraction.textContent = `Osvetlená časť: približne ${percent} %`;
+    ui.position.textContent = `Poloha ${state.position} z ${state.positions}`;
+    ui.svg.setAttribute('aria-label', `Pohľad zo Zeme: ${name} Osvetlená časť približne ${percent} %, svetlá strana ${state.litRight ? 'vpravo' : 'vľavo'}.`);
+    const announcement = state.busy ? '' : `${state.name}. Osvetlená časť približne ${percent} %.`;
+    if (ui.status.textContent !== announcement) ui.status.textContent = announcement;
+  }
   function render(focusKey) {
     experimentUI = null;
     const tour = !!lesson && lesson.steps[step].type === 'tour' ? lesson.steps[step] : null;
     const sorting = !!lesson && lesson.steps[step].type === 'classify' ? lesson.steps[step] : null;
     const item = sorting?.items[stop], itemName = item ? adapter.bodyInfo(item.body).name : null;
-    const compactExperiment = !!lesson && lesson.steps[step].type === 'experiment' && shortExperimentLayout.matches;
+    const compactExperiment = !!lesson && dayNight(lesson.steps[step]) && shortExperimentLayout.matches;
     root.replaceChildren(); root.hidden = false; root.inert = false;
     document.body.classList.add('is-learn'); root.className = lesson ? 'learn-panel' : 'learn-home';
     root.classList.toggle('is-expanded', expanded);
-    root.classList.toggle('is-experiment', !!lesson && lesson.steps[step].type === 'experiment');
+    root.classList.toggle('is-experiment', !!lesson && dayNight(lesson.steps[step]));
     root.classList.toggle('is-tour', !!tour);
     root.classList.toggle('is-classify', !!sorting); root.classList.toggle('is-result', !!sorting && !item);
     document.body.classList.toggle('is-learn-classify', !!sorting);
+    document.body.classList.toggle('is-learn-moon', !!lesson && lesson.steps[step].experiment?.kind === 'moon-phases');
     if (lesson && sideStep(lesson.steps[step]) && sideTourLayout.matches) root.dataset.layout = 'side'; else delete root.dataset.layout;
     const header = el('header', null, 'learn-header');
     const heading = el('h2', compactExperiment ? 'Pokus so Zemou' : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
@@ -372,11 +397,11 @@ window.Learn = (() => {
         body.append(result);
         if (sorting.doneText) body.append(el('p', sorting.doneText));
       }
-      if (s.type === 'experiment') {
+      if (dayNight(s)) {
         const light = el('p', null, 'learn-daynight'); light.setAttribute('aria-label', 'Stav označeného miesta');
         const explanation = el('p'), visibility = el('p', null, 'learn-location-note');
-        const turn = button('Otočiť Zem o 90°', () => adapter.experiment.turn(), 'learn-primary');
-        const reset = button('Obnoviť pokus', () => adapter.experiment.reset());
+        const turn = button('Otočiť Zem o 90°', () => experimentOf(s).turn(), 'learn-primary');
+        const reset = button('Obnoviť pokus', () => experimentOf(s).reset());
         const actions = el('div', null, 'learn-experiment-actions'); actions.append(turn, reset);
         const status = el('p', null, 'learn-experiment-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-atomic', 'true');
         experimentUI = { light, explanation, visibility, turn, reset, status };
@@ -385,6 +410,22 @@ window.Learn = (() => {
         if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
         details.append(explanation, visibility, el('p', s.text), el('p', s.note, 'learn-note'), button('Zopakovať ukážku', demonstrate));
         body.append(light, actions, details, status);
+      }
+      if (s.type === 'experiment' && s.experiment.kind === 'moon-phases') {
+        const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'), shape = name => document.createElementNS(ns, name);
+        svg.setAttribute('viewBox', '-50 -50 100 100'); svg.setAttribute('class', 'learn-moon-phase'); svg.setAttribute('role', 'img');
+        const dark = shape('circle'), lit = shape('path'), rim = shape('circle');
+        dark.setAttribute('r', '46'); dark.setAttribute('class', 'learn-moon-dark'); lit.setAttribute('class', 'learn-moon-lit');
+        rim.setAttribute('r', '46'); rim.setAttribute('class', 'learn-moon-rim'); svg.append(dark, lit, rim);
+        const figure = el('figure', null, 'learn-moon-view'), caption = el('figcaption');
+        const name = el('strong', null, 'learn-moon-name'), fraction = el('span'), position = el('span', null, 'learn-moon-position');
+        caption.append(el('span', 'Ako vidíme Mesiac zo Zeme', 'learn-moon-label'), name, fraction, position); figure.append(svg, caption);
+        const advance = button('Posuň Mesiac', () => experimentOf(s).advance(), 'learn-primary');
+        const reset = button('Začať odznova', () => experimentOf(s).reset());
+        const actions = el('div', null, 'learn-experiment-actions'); actions.append(advance, reset);
+        const status = el('p', null, 'learn-experiment-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-atomic', 'true');
+        experimentUI = { kind: 'moon-phases', svg, lit, name, fraction, position, advance, reset, status };
+        body.append(figure, actions, el('p', s.text), el('p', s.note, 'learn-note'), status, button('Zopakovať ukážku', demonstrate));
       }
       if (s.type === 'question') {
         const group = el('fieldset'); group.append(el('legend', 'Vyber jednu odpoveď'));
@@ -450,11 +491,11 @@ window.Learn = (() => {
   function syncResponsiveSheet() {
     if (!active) return;
     const body = root.querySelector('.learn-body');
-    const collapsed = !!lesson && !expanded && sheetLayout.matches && !(lesson.steps[step].type === 'experiment' && shortExperimentLayout.matches);
+    const collapsed = !!lesson && !expanded && sheetLayout.matches && !(dayNight(lesson.steps[step]) && shortExperimentLayout.matches);
     if (collapsed && body.contains(document.activeElement)) root.querySelector('.learn-expand').focus();
     body.inert = collapsed; adapter.sync();
   }
-  shortExperimentLayout.addEventListener('change', () => { if (active && lesson?.steps[step].type === 'experiment') render(); });
+  shortExperimentLayout.addEventListener('change', () => { if (active && dayNight(lesson?.steps[step])) render(); });
   sideTourLayout.addEventListener('change', () => { if (active && lesson && sideStep(lesson.steps[step])) render(false); });
   sheetLayout.addEventListener('change', syncResponsiveSheet);
   window.addEventListener('resize', syncResponsiveSheet);

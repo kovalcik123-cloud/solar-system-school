@@ -1040,7 +1040,7 @@
 
             // Advance only astronomical motion. Keep sampling the clock while paused so
             // rendering, camera controls and UI timers continue without a resume-time jump.
-            const motionActive = areOrbitsActive && !isQuizMode && !isQuizResults && !earthLessonExperiment.active;
+            const motionActive = areOrbitsActive && !isQuizMode && !isQuizResults && !earthLessonExperiment.active && !moonPhaseExperiment.active;
             const motionDelta = motionActive ? delta : 0;
 
             // PLANETS
@@ -1086,6 +1086,7 @@
             controls.update();
             controls.minDistance = minimum; controls.maxDistance = maximum;
             earthLessonExperiment.update(now);
+            moonPhaseExperiment.update(now);
             renderer.render(scene, camera);
             planetLabels.update(now);
         }
@@ -1926,6 +1927,109 @@
             return { begin, end, turn, reset, update, state, get active() { return !!saved; } };
         })();
 
+        // Learn-only Moon phases experiment. The phase comes from the model positions of the Sun, Earth and Moon:
+        // phase angle ψ = angle between Moon→Sun and Moon→Earth; illuminated fraction seen from Earth k = (1 + cos ψ) / 2.
+        // Waxing/waning and the lit limb use a northern-hemisphere observer at Earth looking at the Moon with +Y (north) up.
+        const moonPhaseExperiment = (() => {
+            let earth = null, moon = null, saved = null, motion = null, notify = null, steps = 0, base = 0, lastKey = '';
+            let phaseMaterial = null, aoTexture = null;
+            const STEP = Math.PI / 4, up = new THREE.Vector3(0, 1, 0);
+            const toSun = new THREE.Vector3(), toEarth = new THREE.Vector3(), forward = new THREE.Vector3(), right = new THREE.Vector3(), sunDir = new THREE.Vector3();
+            const pause = document.getElementById('pause-btn');
+            const NAMES = ['Nov', 'Dorastajúci kosák', 'Prvá štvrť', 'Dorastajúci Mesiac', 'Spln', 'Ubúdajúci Mesiac', 'Posledná štvrť', 'Ubúdajúci kosák'];
+            // Same placement as the animation loop, so geometry is exact even before the next frame.
+            function place(angle) {
+                moon.userData.angle = angle;
+                moon.position.set(earth.position.x + Math.cos(angle) * moon.userData.distance, earth.position.y, earth.position.z + Math.sin(angle) * moon.userData.distance);
+                orientLockedSatellite(moon);
+            }
+            function geometry() {
+                const sun = planets.find(mesh => mesh.userData.name === 'Slnko');
+                toSun.copy(sun.position).sub(moon.position).normalize();
+                toEarth.copy(earth.position).sub(moon.position).normalize();
+                const phaseAngle = Math.acos(THREE.MathUtils.clamp(toSun.dot(toEarth), -1, 1));
+                const fraction = (1 + Math.cos(phaseAngle)) / 2;
+                // Waxing while the Moon is east of the Sun, i.e. ahead of it in the prograde (+Y) orbit direction.
+                forward.copy(moon.position).sub(earth.position).normalize();
+                sunDir.copy(sun.position).sub(earth.position).normalize();
+                const waxing = new THREE.Vector3().crossVectors(sunDir, forward).dot(up) > 0;
+                right.crossVectors(forward, up).normalize();
+                return { phaseAngle, fraction, waxing, litRight: toSun.dot(right) > 0 };
+            }
+            function state() {
+                if (!saved) return { active: false, busy: false };
+                const g = geometry(), position = ((steps % 8) + 8) % 8;
+                return { active: true, busy: !!motion, position: position + 1, positions: 8, fraction: g.fraction, phaseAngle: g.phaseAngle,
+                    waxing: g.waxing, litRight: g.litRight, name: motion ? null : NAMES[position] };
+            }
+            function publish() {
+                const s = state(), key = `${s.active}|${s.busy}|${s.position}|${Math.round(s.fraction * 200)}|${s.litRight}`;
+                if (key !== lastKey) { lastKey = key; if (notify) notify(); }
+            }
+            function end() {
+                if (!saved) return;
+                motion = null;
+                place(saved.angle);
+                moon.material = saved.material;
+                phaseMaterial.dispose(); aoTexture.dispose(); phaseMaterial = null; aoTexture = null;
+                moon.geometry.deleteAttribute('uv2');
+                if (areOrbitsActive !== saved.playing) toggleOrbit();
+                pause.disabled = saved.disabled;
+                if (saved.title === null) pause.removeAttribute('title'); else pause.title = saved.title;
+                saved = null; earth = null; moon = null; notify = null; lastKey = '';
+            }
+            function begin(config, onChange) {
+                end();
+                if (!Learn.active || config.kind !== 'moon-phases' || isQuizMode || isQuizResults) return;
+                earth = planets.find(mesh => mesh.userData.name === 'Zem');
+                moon = satellites.find(mesh => mesh.userData.parent === earth && mesh.userData.rotationModel === 'tidallyLocked');
+                saved = { angle: moon.userData.angle, material: moon.material, playing: areOrbitsActive, disabled: pause.disabled, title: pause.getAttribute('title') };
+                if (areOrbitsActive) toggleOrbit();
+                pause.disabled = true; pause.title = 'Pohyb sústavy je počas pokusu pozastavený.';
+                // Moon-only lighting: a black ambient-occlusion map removes most ambient and hemisphere fill from this
+                // temporary material copy (aoMap scales indirect light only); direct sunlight and the texture are unchanged.
+                moon.geometry.setAttribute('uv2', moon.geometry.getAttribute('uv'));
+                aoTexture = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat); aoTexture.needsUpdate = true;
+                phaseMaterial = saved.material.clone(); phaseMaterial.map = saved.material.map; phaseMaterial.aoMap = aoTexture; phaseMaterial.aoMapIntensity = 0.92;
+                moon.material = phaseMaterial;
+                notify = onChange;
+                // Start at New Moon: the Moon on the Earth–Sun line, towards the Sun.
+                const sun = planets.find(mesh => mesh.userData.name === 'Slnko');
+                sunDir.copy(sun.position).sub(earth.position);
+                base = Math.atan2(sunDir.z, sunDir.x);
+                reset();
+            }
+            function reset() {
+                if (!saved) return;
+                motion = null; steps = 0; place(base); lastKey = ''; publish();
+            }
+            function advance() {
+                if (!saved || motion || !Learn.active || isQuizMode || isQuizResults) return;
+                // Prograde orbit (the model's angle decreases); each step is exactly 45°.
+                const from = base - steps * STEP, to = base - (steps + 1) * STEP;
+                steps++;
+                if (reducedCameraMotion.matches) settle(to);
+                else { motion = { from, to, started: performance.now() }; publish(); }
+            }
+            function settle(angle) {
+                motion = null;
+                if (steps >= 8) { steps = 0; angle = base; } // A full orbit returns exactly to the start.
+                place(angle); publish();
+            }
+            function update(now) {
+                if (!saved) return;
+                if (!Learn.active || isQuizMode || isQuizResults) { end(); return; }
+                if (areOrbitsActive) toggleOrbit();
+                if (motion) {
+                    const t = Math.min(1, Math.max(0, (now - motion.started) / 700));
+                    if (t === 1) settle(motion.to);
+                    else place(THREE.MathUtils.lerp(motion.from, motion.to, t * t * (3 - 2 * t)));
+                }
+                publish();
+            }
+            return { begin, end, advance, reset, update, state, get active() { return !!saved; } };
+        })();
+
         // One Learn body map. Lesson IDs resolve to existing scene bodies only.
         const learnBodies = Object.freeze({
             sun: 'Slnko', mercury: 'Merkúr', venus: 'Venuša', earth: 'Zem', mars: 'Mars',
@@ -1955,8 +2059,9 @@
             closeInfo: closePopup,
             exitQuiz: () => { if (isQuizMode || isQuizResults) stopQuiz(); },
             sync: () => { syncNavigationPresentation(); cameraFrameDirty = true; },
-            cancel: () => { earthLessonExperiment.end(); if (controls) { cancelCameraTransition(); planetLabels.hide(); } },
-            experiment: earthLessonExperiment,
+            cancel: () => { earthLessonExperiment.end(); moonPhaseExperiment.end(); if (controls) { cancelCameraTransition(); planetLabels.hide(); } },
+            // Experiment registry keyed by lesson experiment kind.
+            experiments: Object.freeze({ 'earth-day-night': earthLessonExperiment, 'moon-phases': moonPhaseExperiment }),
             snapshot: () => ({ playing: areOrbitsActive, speed: simulationSpeed, orbits: areOrbitLinesVisible }),
             restore: saved => {
                 if (areOrbitsActive !== saved.playing) toggleOrbit();
