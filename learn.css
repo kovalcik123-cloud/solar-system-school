@@ -222,3 +222,10 @@ body.is-learn #info-card { display: none !important; }
  [data-layout="side"] .learn-classify-group li { gap: 4px; }
  [data-layout="side"] .learn-classify-group .planet-thumbnail { width: 18px; height: 18px; }
 }
+
+/* Phase 6E.4.1: question steps on phone portrait screens use the Learn home height (below the
+   planet bar, above the app bar); the body scrolls and the footer stays visible. */
+@media (max-width: 700px) and (min-height: 521px) {
+ #learn-root.learn-panel.is-expanded:has(.learn-body fieldset) { max-height: calc(100dvh - 262px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+ .learn-panel:has(.learn-body fieldset) .learn-body { scrollbar-width: thin; scrollbar-color: #44aadd88 transparent; }
+}

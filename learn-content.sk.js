@@ -3,7 +3,7 @@ window.LearnContent = {
   topics: [
     { id: 'nasa-slnecna-sustava', title: 'Naša slnečná sústava', description: 'Spoznaj našu vesmírnu rodinu a pozri sa zblízka na Slnko a Zem.', minutes: 3 },
     { id: 'slnko', title: 'Slnko – naša hviezda', description: 'Preskúmaj svetlo zo Slnka a zisti, prečo sa na Zemi strieda deň a noc.', minutes: 4 },
-    { id: 'planety', title: 'Spoznaj planéty', description: 'Vydaj sa na expedíciu ku všetkým ôsmim planétam a zisti, čím sa od seba líšia.', minutes: 7 },
+    { id: 'planety', title: 'Spoznaj planéty', description: 'Vydaj sa na expedíciu ku všetkým ôsmim planétam a zisti, čím sa od seba líšia.', minutes: 9 },
     { id: 'zem-mesiac', title: 'Zem a Mesiac' },
     { id: 'pohyb', title: 'Pohyb vo vesmíre' },
     { id: 'obri', title: 'Vesmírni obri' }
@@ -61,7 +61,7 @@ window.LearnContent = {
         { body: 'neptune', title: 'Neptún', text: 'Neptún je ľadový obor a najvzdialenejšia planéta od Slnka. Jeden obeh okolo Slnka mu trvá asi 165 rokov.', fact: 'Fúkajú tu najsilnejšie vetry v slnečnej sústave – rýchlejšie ako 2 000 km/h.' }
       ] },
       // Deterministic mixed order; answers are checked against planetGroups.
-      { id: 'triedenie', type: 'classify', title: 'Roztrieď planéty',
+      { id: 'triedenie', type: 'classify', title: 'Roztrieď planéty', next: 'Prejsť na otázky',
         doneTitle: 'Planéty sú roztriedené!', doneText: 'Štyri kamenné planéty obiehajú blízko Slnka. Za nimi sú dvaja plynní obri a dvaja ľadoví obri.',
         groups: [{ id: 'terrestrial', label: 'Kamenná planéta' }, { id: 'gas-giant', label: 'Plynný obor' }, { id: 'ice-giant', label: 'Ľadový obor' }],
         items: [
@@ -74,6 +74,10 @@ window.LearnContent = {
           { body: 'uranus', group: 'ice-giant', hint: 'Urán je modrozelený obor ďaleko od Slnka. Spomeň si, čo ukrýva pod atmosférou: vodu, čpavok a metán.', confirm: 'Správne! Urán je ľadový obor.' },
           { body: 'earth', group: 'terrestrial', hint: 'Žijeme na pevnom povrchu Zeme. Je Zem menšia planéta blízko Slnka, alebo obor?', confirm: 'Správne! Zem je kamenná planéta – náš domov.' }
         ] },
+      // Correct answers sit in different positions so the order gives no hint.
+      { id: 'otazka-venusa', type: 'question', title: 'Prečo je Venuša najhorúcejšia?', text: 'Merkúr je bližšie k Slnku. Prečo má napriek tomu Venuša vyššiu teplotu?', options: [{ id: 'blizsie', text: 'Venuša je bližšie k Slnku ako Merkúr.' }, { id: 'atmosfera', text: 'Jej hustá atmosféra zadržiava veľa tepla.' }, { id: 'svetlo', text: 'Venuša vytvára vlastné svetlo ako hviezda.' }], correct: 'atmosfera', correctFeedback: 'Správne! Hustá atmosféra Venuše spôsobuje veľmi silný skleníkový efekt a zadržiava teplo.', incorrectFeedback: 'Skús to znova. Spomeň si, čo obklopuje Venušu a prečo na nej zostáva teplo.' },
+      { id: 'otazka-obri', type: 'question', title: 'Kamenné planéty alebo obri?', text: 'Ktoré tvrdenie správne opisuje kamenné planéty a plynných obrov?', options: [{ id: 'obri-povrch', text: 'Plynní obri majú pevný povrch a sú menší.' }, { id: 'vodik', text: 'Kamenné planéty sú tvorené prevažne vodíkom a héliom.' }, { id: 'povrch', text: 'Kamenné planéty majú pevný povrch. Plynní obri nemajú taký povrch.' }], correct: 'povrch', correctFeedback: 'Správne! Merkúr, Venuša, Zem a Mars majú pevný povrch. Jupiter a Saturn sú plynní obri bez takého pevného povrchu.', incorrectFeedback: 'Skús to znova. Spomeň si, na ktorých planétach je pevný povrch a ktoré tvoria najmä plyny.' },
+      { id: 'otazka-ladovi-obri', type: 'question', title: 'Čím sú výnimoční ľadoví obri?', text: 'Prečo Urán a Neptún nazývame ľadovými obrami?', next: 'Dokončiť lekciu', options: [{ id: 'latky', text: 'Vo svojom vnútri obsahujú veľa vody, čpavku a metánu.' }, { id: 'zamrznuty', text: 'Majú zamrznutý povrch, po ktorom môžeme kráčať.' }, { id: 'bez-atmosfery', text: 'Na rozdiel od ostatných planét nemajú atmosféru.' }], correct: 'latky', correctFeedback: 'Správne! Urán a Neptún obsahujú veľa látok, ktoré vedci nazývajú ľady – napríklad vodu, čpavok a metán. Neznamená to, že majú obyčajný zamrznutý povrch.', incorrectFeedback: 'Skús to znova. Názov ľadový obor súvisí s látkami vo vnútri planéty, nie s ľadovou zemou pod nohami.' },
       { id: 'zaver', type: 'summary', title: 'Výborne! Expedícia je na konci.', ideas: ['Okolo Slnka obieha osem planét – od Merkúra po Neptún.', 'Kamenné planéty Merkúr, Venuša, Zem a Mars sú menšie, majú pevný povrch a sú bližšie k Slnku.', 'Plynní obri Jupiter a Saturn sú najväčšie planéty a nemajú pevný povrch.', 'Ľadoví obri Urán a Neptún sú najďalej od Slnka a ukrývajú veľa vody, čpavku a metánu.'], text: 'Pokračuj v objavovaní alebo si vyskúšaj kvíz o všetkých ôsmich planétach.' }
     ]
   }]
