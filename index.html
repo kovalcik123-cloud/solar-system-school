@@ -1485,6 +1485,7 @@
             if (isQuizMode || isQuizResults) return;
             cancelCameraTransition();
             focusedBody = null;
+            selectedNavigationPlanet = null; // Overview has no selected planet, also while the camera is still moving.
             closePopup();
             const nav = document.getElementById('planet-nav').getBoundingClientRect();
             const bar = document.querySelector('.simulation-controls').getBoundingClientRect();
@@ -1563,6 +1564,7 @@
             overviewActive = true;
             beginCameraTransition(best.direction.multiplyScalar(best.distance), new THREE.Vector3());
             planetLabels.overview();
+            if (explicit) syncNavigationPresentation();
         }
 
         function resetCamera() {

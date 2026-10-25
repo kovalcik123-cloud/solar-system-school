@@ -430,7 +430,7 @@ window.Learn = (() => {
         const named = forward.title && (forward.step === step || !s.next);
         const next = button(forward.label || (named ? `Ďalej: ${forward.title}` : s.nextShort || s.next || 'Ďalej'), () => go(forward, 'next'), 'learn-primary');
         if (named) next.setAttribute('aria-label', `Ďalšia planéta: ${forward.title}`);
-        else if (s.nextShort) next.setAttribute('aria-label', s.next);
+        else if (s.nextShort && !forward.label) next.setAttribute('aria-label', s.next);
         if (tour || sorting) next.dataset.focus = 'next';
         // Classification continues only after the current planet is classified correctly.
         next.disabled = (s.type === 'question' || !!item) && feedback !== 'correct'; footer.append(next);
