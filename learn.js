@@ -2,7 +2,7 @@
 window.Learn = (() => {
   let adapter, root, active = false, lesson = null, step = 0, stop = 0, answer = null;
   let feedback = null, completed = false, session = 0, snapshot = null, expanded = true;
-  let experimentUI = null, experimentDetailsOpen = false, notice = null, liveStatus = null, tourReading = false;
+  let experimentUI = null, experimentDetailsOpen = false, notice = null, liveStatus = null, tourReading = false, viewReading = false;
   let solved = new Set(), tried = new Set();
   const data = window.LearnContent;
   const sheetLayout = window.matchMedia('(max-width: 900px)');
@@ -10,6 +10,8 @@ window.Learn = (() => {
   // Short screens open tours collapsed so the planet stays visible; short landscape tablets use a side panel.
   const compactTourLayout = window.matchMedia('(max-width: 900px) and (max-height: 740px)');
   const sideTourLayout = window.matchMedia('(min-width: 701px) and (max-width: 900px) and (max-height: 600px)');
+  // Phone portrait screens keep the Moon drawing and its buttons; the explanation opens on request.
+  const compactMoonLayout = window.matchMedia('(max-width: 700px) and (min-height: 521px)');
   // Steps whose 3D view must stay visible beside the panel on short landscape tablets.
   const sideStep = s => s.type === 'tour' || s.type === 'classify' || s.demo?.view === 'earth-moon';
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
@@ -19,7 +21,12 @@ window.Learn = (() => {
   // Each experiment kind runs in exactly one Earth view; the engine comes from the adapter's registry.
   const experimentViews = Object.freeze({ 'earth-day-night': 'day-night', 'moon-phases': 'earth-moon' });
   const dayNight = s => s?.type === 'experiment' && s.experiment.kind === 'earth-day-night';
+  const moonPhases = s => s?.type === 'experiment' && s.experiment.kind === 'moon-phases';
   const experimentOf = s => s?.type === 'experiment' ? adapter.experiments[s.experiment.kind] : null;
+  const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || moonPhases(s) && compactMoonLayout.matches;
+  const earthMoonStep = s => s?.demo?.view === 'earth-moon';
+  // Short phones open Earth–Moon observations collapsed so both bodies stay visible; side panels already leave room.
+  const compactView = s => s.type === 'observe' && earthMoonStep(s) && compactTourLayout.matches && !sideTourLayout.matches;
   // Lit part of the Moon disc as seen from Earth: the limb on the lit side plus the terminator ellipse.
   function phasePath(fraction, litRight, r = 46) {
     const k = Math.min(1, Math.max(0, fraction)), rx = r * Math.abs(1 - 2 * k);
@@ -80,6 +87,8 @@ window.Learn = (() => {
         // A short visible label keeps the full next label as its accessible name.
         if (!optionalText(s.nextShort) || s.nextShort !== undefined && !filled(s.next)) throw Error('Invalid lesson step');
         if (s.demo && ( !['overview','focus'].includes(s.demo.kind) || (s.demo.kind === 'focus' && !adapter.hasBody(s.demo.body)))) throw Error('Invalid lesson demonstration');
+        if (s.demo?.motion !== undefined && (typeof s.demo.motion !== 'boolean' || s.demo.kind !== 'focus' || s.type === 'experiment')) throw Error('Invalid lesson demonstration');
+        if (s.type === 'observe' && !optionalText(s.note)) throw Error('Invalid lesson step');
         if (s.demo?.view && (s.demo.kind !== 'focus' || !Object.prototype.hasOwnProperty.call(views, s.demo.view) || views[s.demo.view] !== s.demo.body)) throw Error('Invalid lesson view');
         if (s.type === 'experiment' && (!Object.prototype.hasOwnProperty.call(experimentViews, s.experiment?.kind) || !adapter.experiments?.[s.experiment.kind] || s.demo?.body !== 'earth' || s.demo?.view !== experimentViews[s.experiment.kind])) throw Error('Invalid lesson experiment');
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
@@ -154,8 +163,19 @@ window.Learn = (() => {
     const position = tourPosition();
     announce(`${current.stops[stop].title}, planéta ${position.number} z ${position.total}, ${groupLabel(current.stops[stop].body)}.`);
   }
+  // Earth–Moon steps keep the camera on Earth and the Moon; other picks, and the overview (id null), only explain why.
+  function holdView(id) {
+    const current = active && lesson?.steps[step];
+    if (!earthMoonStep(current)) return false;
+    if (id === 'earth') return true;
+    const name = id && adapter.bodyInfo(id)?.name;
+    notice = { text: `Teraz pozorujeme Zem a Mesiac. ${name ? `${name} si môžeš pozrieť v režime Objavuj.` : 'Celú sústavu uvidíš na konci lekcie.'}`, target: null };
+    render(false); announce(notice.text);
+    return true;
+  }
   // Scene and top-bar picks during a tour never let the camera show a different planet than the panel.
   function selectBody(id) {
+    if (holdView(id)) return true;
     const current = active && lesson?.steps[step];
     if (current?.type === 'classify' && adapter.hasBody(id)) {
       // Picks never skip a question or reveal an answer; the view stays on the current question.
@@ -214,7 +234,7 @@ window.Learn = (() => {
   function start(id) {
     if (!active) return;
     const found = data.lessons.find(l => l.id === id); if (!found) return;
-    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; tourReading = false; render();
+    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; tourReading = false; viewReading = false; render();
   }
   function move(index, stopIndex = 0) {
     if (!active || !lesson || index < 0 || index >= lesson.steps.length) return;
@@ -222,7 +242,7 @@ window.Learn = (() => {
     session++; adapter.cancel(); experimentDetailsOpen = false; step = index; answer = null; feedback = null; notice = null;
     stop = target.type === 'tour' && target.stops[stopIndex] ? stopIndex : target.type === 'classify' ? Math.min(Math.max(stopIndex, 0), target.items.length) : 0;
     if (target.type === 'classify') classifyState(target);
-    completed = lesson.steps[step].type === 'summary'; expanded = target.type === 'tour' && compactTourLayout.matches ? tourReading : true; render(); demonstrate();
+    completed = lesson.steps[step].type === 'summary'; expanded = target.type === 'tour' && compactTourLayout.matches ? tourReading : compactView(target) ? viewReading : true; render(); demonstrate();
     if (target.type === 'classify') announce(classifyAnnouncement(target));
   }
   function demonstrate() {
@@ -270,18 +290,20 @@ window.Learn = (() => {
     const tour = !!lesson && lesson.steps[step].type === 'tour' ? lesson.steps[step] : null;
     const sorting = !!lesson && lesson.steps[step].type === 'classify' ? lesson.steps[step] : null;
     const item = sorting?.items[stop], itemName = item ? adapter.bodyInfo(item.body).name : null;
-    const compactExperiment = !!lesson && dayNight(lesson.steps[step]) && shortExperimentLayout.matches;
+    const compactExperiment = !!lesson && compactExperimentStep(lesson.steps[step]);
     root.replaceChildren(); root.hidden = false; root.inert = false;
     document.body.classList.add('is-learn'); root.className = lesson ? 'learn-panel' : 'learn-home';
     root.classList.toggle('is-expanded', expanded);
     root.classList.toggle('is-experiment', !!lesson && dayNight(lesson.steps[step]));
+    root.classList.toggle('is-moon-experiment', !!lesson && moonPhases(lesson.steps[step]));
+    root.classList.toggle('is-earth-moon', !!lesson && earthMoonStep(lesson.steps[step]));
     root.classList.toggle('is-tour', !!tour);
     root.classList.toggle('is-classify', !!sorting); root.classList.toggle('is-result', !!sorting && !item);
     document.body.classList.toggle('is-learn-classify', !!sorting);
-    document.body.classList.toggle('is-learn-moon', !!lesson && lesson.steps[step].experiment?.kind === 'moon-phases');
+    document.body.classList.toggle('is-learn-moon', !!lesson && earthMoonStep(lesson.steps[step]));
     if (lesson && sideStep(lesson.steps[step]) && sideTourLayout.matches) root.dataset.layout = 'side'; else delete root.dataset.layout;
     const header = el('header', null, 'learn-header');
-    const heading = el('h2', compactExperiment ? 'Pokus so Zemou' : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
+    const heading = el('h2', compactExperiment ? (dayNight(lesson.steps[step]) ? 'Pokus so Zemou' : 'Fázy Mesiaca') : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
     heading.id = 'learn-heading'; heading.tabIndex = -1;
     const titles = el('div'), eyebrow = el('p', null, 'learn-eyebrow');
     if (lesson) {
@@ -302,7 +324,7 @@ window.Learn = (() => {
     if (lesson) {
       const toggle = button(compactExperiment ? (experimentDetailsOpen ? 'Menej textu' : 'Vysvetlenie') : expanded ? 'Menej' : 'Viac', () => {
         if (compactExperiment) { experimentDetailsOpen = !experimentDetailsOpen; render(); root.querySelector('.learn-expand').focus({ preventScroll: true }); }
-        else { expanded = !expanded; if (tour) tourReading = expanded; render(); }
+        else { expanded = !expanded; if (tour) tourReading = expanded; else if (compactView(lesson.steps[step])) viewReading = expanded; render(); }
       }, 'learn-expand');
       toggle.setAttribute('aria-expanded', String(compactExperiment ? experimentDetailsOpen : expanded));
       toggle.setAttribute('aria-controls', compactExperiment ? 'learn-experiment-details' : 'learn-body'); header.append(toggle);
@@ -322,6 +344,8 @@ window.Learn = (() => {
       if (notice.target) { const target = notice.target; box.append(button(`Prejsť na zastávku: ${target.title}`, () => go(target))); }
       root.append(box);
     }
+    // A collapsed Earth–Moon observation keeps the start of its own text visible (clipped by CSS); "Viac" shows all.
+    if (lesson && !expanded && sheetLayout.matches && lesson.steps[step].type === 'observe' && earthMoonStep(lesson.steps[step])) root.append(el('p', lesson.steps[step].text, 'learn-lead'));
     const body = el('div', null, 'learn-body'); body.id = 'learn-body';
     if (!lesson) {
       body.append(el('p', 'Vyber si krátku lekciu. Pozoruj, skúmaj a vyskúšaj si, čo si sa naučil.'));
@@ -341,6 +365,7 @@ window.Learn = (() => {
     } else {
       const s = lesson.steps[step];
       if (s.text && s.type !== 'summary' && s.type !== 'experiment') body.append(el('p', s.text));
+      if (s.type === 'observe' && s.note) body.append(el('p', s.note, 'learn-note'));
       if (s.type === 'intro') { body.append(el('h3', 'Čo sa naučíš'), el('p', lesson.objective), el('p', lesson.limitation, 'learn-note')); }
       if (s.demo && s.type !== 'experiment') body.append(button('Zopakovať ukážku', demonstrate));
       if (tour) {
@@ -425,7 +450,11 @@ window.Learn = (() => {
         const actions = el('div', null, 'learn-experiment-actions'); actions.append(advance, reset);
         const status = el('p', null, 'learn-experiment-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-atomic', 'true');
         experimentUI = { kind: 'moon-phases', svg, lit, name, fraction, position, advance, reset, status };
-        body.append(figure, actions, el('p', s.text), el('p', s.note, 'learn-note'), status, button('Zopakovať ukážku', demonstrate));
+        const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
+        details.hidden = compactExperiment && !experimentDetailsOpen;
+        if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
+        details.append(el('p', s.text), el('p', s.note, 'learn-note'), button('Zopakovať ukážku', demonstrate));
+        body.append(figure, actions, details, status);
       }
       if (s.type === 'question') {
         const group = el('fieldset'); group.append(el('legend', 'Vyber jednu odpoveď'));
@@ -491,17 +520,20 @@ window.Learn = (() => {
   function syncResponsiveSheet() {
     if (!active) return;
     const body = root.querySelector('.learn-body');
-    const collapsed = !!lesson && !expanded && sheetLayout.matches && !(dayNight(lesson.steps[step]) && shortExperimentLayout.matches);
+    const collapsed = !!lesson && !expanded && sheetLayout.matches && !compactExperimentStep(lesson.steps[step]);
     if (collapsed && body.contains(document.activeElement)) root.querySelector('.learn-expand').focus();
     body.inert = collapsed; adapter.sync();
   }
   shortExperimentLayout.addEventListener('change', () => { if (active && dayNight(lesson?.steps[step])) render(); });
+  compactMoonLayout.addEventListener('change', () => { if (active && moonPhases(lesson?.steps[step])) render(); });
   sideTourLayout.addEventListener('change', () => { if (active && lesson && sideStep(lesson.steps[step])) render(false); });
   sheetLayout.addEventListener('change', syncResponsiveSheet);
   window.addEventListener('resize', syncResponsiveSheet);
   return { init(a) {
       adapter = a; root = document.getElementById('learn-root'); root.addEventListener('click', event => event.stopPropagation()); validate();
       liveStatus = el('p', null, 'learn-live'); liveStatus.setAttribute('role', 'status'); liveStatus.setAttribute('aria-atomic', 'true'); document.body.append(liveStatus);
-    }, enter, leave, home, selectBody,
-    get active() { return active; }, get inLesson() { return !!lesson; }, get state() { return { active, lesson: lesson?.id, step, stop, answer, feedback, completed, session, notice: notice?.text ?? null }; } };
+    }, enter, leave, home, selectBody, selectOverview: () => holdView(null),
+    get active() { return active; }, get inLesson() { return !!lesson; },
+    // The Learn-only camera view of the current step, e.g. 'earth-moon'.
+    get view() { return active && lesson ? stepDemo(lesson.steps[step])?.view ?? null : null; }, get state() { return { active, lesson: lesson?.id, step, stop, answer, feedback, completed, session, notice: notice?.text ?? null }; } };
 })();

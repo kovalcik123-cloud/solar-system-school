@@ -379,7 +379,7 @@
     <section class="simulation-controls" aria-label="Ovládanie simulácie">
         <button id="pause-btn" class="simulation-button play-button" type="button" onclick="toggleOrbit()" aria-label="Pozastaviť pohyb" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="play-icon" d="M8 5v14M16 5v14"/></svg><span id="play-label">Pozastaviť</span></button>
         <label class="speed-control" for="simulation-speed"><span>Rýchlosť pohybu</span><select id="simulation-speed" onchange="simulationSpeed = Number(this.value)" title="Násobok pohybu simulácie, nie skutočný astronomický čas"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></label>
-        <button class="simulation-button" type="button" onclick="showSystemOverview()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>Celá sústava</span></button>
+        <button class="simulation-button" type="button" onclick="requestSystemOverview()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></svg><span>Celá sústava</span></button>
         <button id="orbit-visibility" class="simulation-button" type="button" onclick="toggleOrbitVisibility()" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="2"/></svg><span>Skryť dráhy</span></button>
     </section>
 
@@ -1087,6 +1087,7 @@
             controls.minDistance = minimum; controls.maxDistance = maximum;
             earthLessonExperiment.update(now);
             moonPhaseExperiment.update(now);
+            earthMoonView.update();
             renderer.render(scene, camera);
             planetLabels.update(now);
         }
@@ -1275,23 +1276,44 @@
                 .reduce((radius, moon) => Math.max(radius, (moon.userData.distance + moon.userData.radius) * 1.06), focusRadius(mesh));
         }
 
-        function frameFocusedBody(mesh, radius = focusRadius(mesh)) {
+        // Earth–Moon view: the camera distance that fits Earth's sphere and the whole Moon orbit, which the elevated view
+        // sees as a flattened ellipse; tanV/tanH are the usable half-angle tangents. A bounding sphere would waste height.
+        function earthMoonDistance(mesh, direction, tanV, tanH) {
+            const vertical = new THREE.Vector3(0, 1, 0).addScaledVector(direction, -direction.y);
+            if (vertical.lengthSq() < 1e-6) vertical.set(0, 0, -1); else vertical.normalize();
+            const horizontal = new THREE.Vector3().crossVectors(direction, vertical), point = new THREE.Vector3();
+            let distance = mesh.userData.radius / Math.sin(Math.atan(Math.min(tanV, tanH)));
+            satellites.filter(moon => moon.userData.parent === mesh).forEach(moon => {
+                for (let i = 0; i < 64; i++) {
+                    // A point fits when its offset (plus the Moon radius) stays within the angle at its own depth.
+                    point.set(Math.cos(i / 32 * Math.PI), 0, Math.sin(i / 32 * Math.PI)).multiplyScalar(moon.userData.distance);
+                    const depth = point.dot(direction), r = moon.userData.radius;
+                    distance = Math.max(distance, depth + (Math.abs(point.dot(vertical)) + r) / tanV, depth + (Math.abs(point.dot(horizontal)) + r) / tanH);
+                }
+            });
+            return distance;
+        }
+
+        function frameFocusedBody(mesh, radius = focusRadius(mesh), earthMoonDirection = null) {
             const nav = document.getElementById('planet-nav').getBoundingClientRect();
             const panel = document.getElementById(Learn.active ? 'learn-root' : 'info-card');
             const info = panel.getBoundingClientRect();
-            const toolbar = document.querySelector('.simulation-controls').getBoundingClientRect();
+            const toolbarElement = document.querySelector('.simulation-controls'), toolbar = toolbarElement.getBoundingClientRect();
             // A Learn side panel (short landscape tours) frames like desktop; otherwise Learn uses the bottom sheet below 900px.
             const mobile = Learn.active ? matchMedia('(max-width: 900px)').matches && panel.dataset.layout !== 'side' : mobileInfoLayout.matches;
             const left = mobileInfoLayout.matches ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
             const visible = Learn.active || panel.style.display === 'block';
             const right = !mobile && visible ? info.left - 20 : innerWidth - 20;
             const top = nav.bottom + 12;
-            const bottom = mobile && visible ? info.top - 12 : toolbar.top - 20;
+            // In the Earth–Moon view a hidden toolbar (short landscape) leaves its height to the scene.
+            const toolbarHidden = earthMoonDirection && getComputedStyle(toolbarElement).visibility === 'hidden';
+            const bottom = mobile && visible ? info.top - 12 : toolbarHidden ? innerHeight - 16 : toolbar.top - 20;
             const width = Math.max(60, right - left), height = Math.max(60, bottom - top);
             focusViewOffset.set(innerWidth / 2 - (left + width / 2), innerHeight / 2 - (top + height / 2));
             const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-            const angle = Math.atan(Math.min(tangent * height / innerHeight, tangent * camera.aspect * width / innerWidth) * 0.78);
-            return radius / Math.sin(angle);
+            const tanV = tangent * height / innerHeight * 0.78, tanH = tangent * camera.aspect * width / innerWidth * 0.78;
+            if (earthMoonDirection) return earthMoonDistance(mesh, earthMoonDirection, tanV, tanH);
+            return radius / Math.sin(Math.atan(Math.min(tanV, tanH)));
         }
 
         function backgroundViewPenalty(mesh, direction) {
@@ -1395,7 +1417,7 @@
             focusedBody = mesh; focusLastPosition.copy(mesh.position);
             // The Earth–Moon view frames the whole Moon orbit and keeps zoom outside it (no Earth or Moon collisions).
             const radius = earthMoon ? systemRadius(mesh) : focusRadius(mesh);
-            const distance = frameFocusedBody(mesh, radius);
+            const distance = frameFocusedBody(mesh, radius, earthMoon ? direction : null);
             controls.minDistance = radius * 1.15;
             controls.maxDistance = Math.max(500, distance * 3, camera.position.distanceTo(controls.target) * 1.05);
             beginCameraTransition(mesh.position.clone().addScaledVector(direction, distance), mesh.position);
@@ -1499,6 +1521,11 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             if (focusedBody && (!Learn.active || Learn.inLesson)) focusPlanet(focusedBody, false);
             else if (overviewActive && (!Learn.active || Learn.inLesson)) showSystemOverview(false);
+        }
+
+        // Toolbar overview. A Learn step may keep its view (Earth–Moon steps) and explain why instead.
+        function requestSystemOverview() {
+            if (!Learn.selectOverview()) showSystemOverview();
         }
 
         function showSystemOverview(explicit = true) {
@@ -1927,12 +1954,65 @@
             return { begin, end, turn, reset, update, state, get active() { return !!saved; } };
         })();
 
+        // Learn-only Moon lighting shared by the Earth–Moon view and the phases experiment. A black ambient-occlusion map
+        // removes most ambient and hemisphere fill from a temporary material copy (aoMap scales indirect light only);
+        // direct sunlight and the texture are unchanged. The original material returns when the last owner releases it.
+        const moonLessonLighting = (() => {
+            const owners = new Set();
+            let moon = null, original = null, material = null, texture = null;
+            function acquire(owner, mesh) {
+                owners.add(owner);
+                if (moon) return;
+                moon = mesh; original = mesh.material;
+                moon.geometry.setAttribute('uv2', moon.geometry.getAttribute('uv'));
+                texture = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat); texture.needsUpdate = true;
+                material = original.clone(); material.map = original.map; material.aoMap = texture; material.aoMapIntensity = 0.92;
+                moon.material = material;
+            }
+            function release(owner) {
+                owners.delete(owner);
+                if (owners.size || !moon) return;
+                moon.material = original; material.dispose(); texture.dispose();
+                moon.geometry.deleteAttribute('uv2');
+                moon = null; original = null; material = null; texture = null;
+            }
+            return { acquire, release, get active() { return !!moon; } };
+        })();
+
+        // Learn-only Earth–Moon view: Moon-only lighting and a guide along the Moon's illustrative orbit. The guide uses the
+        // simulation's own orbit radius and plane and follows Earth; it is neither a raycast target nor a global orbit line.
+        const earthMoonView = (() => {
+            let earth = null, guide = null;
+            function show() {
+                earth = planets.find(mesh => mesh.userData.name === 'Zem');
+                const moon = satellites.find(mesh => mesh.userData.parent === earth && mesh.userData.rotationModel === 'tidallyLocked');
+                const curve = new THREE.EllipseCurve(0, 0, moon.userData.distance, moon.userData.distance, 0, 2 * Math.PI, false, 0);
+                guide = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(128)), new THREE.LineBasicMaterial({ color: 0x8fb8d4, transparent: true, opacity: 0.3 }));
+                guide.rotation.x = Math.PI / 2; // Like the global orbit lines: the curve lies in the X/Z plane the Moon moves in.
+                scene.add(guide);
+                moonLessonLighting.acquire('view', moon);
+            }
+            function hide() {
+                if (!guide) return;
+                scene.remove(guide); guide.geometry.dispose(); guide.material.dispose();
+                moonLessonLighting.release('view');
+                guide = null; earth = null;
+            }
+            // Reconciled every frame and on every Learn sync, so each way out of the view cleans up.
+            function update() {
+                const wanted = Learn.view === 'earth-moon' && focusedView === 'earth-moon' && focusedBody?.userData.name === 'Zem' && !isQuizMode && !isQuizResults;
+                if (!wanted) { hide(); return; }
+                if (!guide) show();
+                guide.position.copy(earth.position);
+            }
+            return { update, get active() { return !!guide; } };
+        })();
+
         // Learn-only Moon phases experiment. The phase comes from the model positions of the Sun, Earth and Moon:
         // phase angle ψ = angle between Moon→Sun and Moon→Earth; illuminated fraction seen from Earth k = (1 + cos ψ) / 2.
         // Waxing/waning and the lit limb use a northern-hemisphere observer at Earth looking at the Moon with +Y (north) up.
         const moonPhaseExperiment = (() => {
             let earth = null, moon = null, saved = null, motion = null, notify = null, steps = 0, base = 0, lastKey = '';
-            let phaseMaterial = null, aoTexture = null;
             const STEP = Math.PI / 4, up = new THREE.Vector3(0, 1, 0);
             const toSun = new THREE.Vector3(), toEarth = new THREE.Vector3(), forward = new THREE.Vector3(), right = new THREE.Vector3(), sunDir = new THREE.Vector3();
             const pause = document.getElementById('pause-btn');
@@ -1970,9 +2050,7 @@
                 if (!saved) return;
                 motion = null;
                 place(saved.angle);
-                moon.material = saved.material;
-                phaseMaterial.dispose(); aoTexture.dispose(); phaseMaterial = null; aoTexture = null;
-                moon.geometry.deleteAttribute('uv2');
+                moonLessonLighting.release('phases');
                 if (areOrbitsActive !== saved.playing) toggleOrbit();
                 pause.disabled = saved.disabled;
                 if (saved.title === null) pause.removeAttribute('title'); else pause.title = saved.title;
@@ -1983,15 +2061,10 @@
                 if (!Learn.active || config.kind !== 'moon-phases' || isQuizMode || isQuizResults) return;
                 earth = planets.find(mesh => mesh.userData.name === 'Zem');
                 moon = satellites.find(mesh => mesh.userData.parent === earth && mesh.userData.rotationModel === 'tidallyLocked');
-                saved = { angle: moon.userData.angle, material: moon.material, playing: areOrbitsActive, disabled: pause.disabled, title: pause.getAttribute('title') };
+                saved = { angle: moon.userData.angle, playing: areOrbitsActive, disabled: pause.disabled, title: pause.getAttribute('title') };
                 if (areOrbitsActive) toggleOrbit();
                 pause.disabled = true; pause.title = 'Pohyb sústavy je počas pokusu pozastavený.';
-                // Moon-only lighting: a black ambient-occlusion map removes most ambient and hemisphere fill from this
-                // temporary material copy (aoMap scales indirect light only); direct sunlight and the texture are unchanged.
-                moon.geometry.setAttribute('uv2', moon.geometry.getAttribute('uv'));
-                aoTexture = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat); aoTexture.needsUpdate = true;
-                phaseMaterial = saved.material.clone(); phaseMaterial.map = saved.material.map; phaseMaterial.aoMap = aoTexture; phaseMaterial.aoMapIntensity = 0.92;
-                moon.material = phaseMaterial;
+                moonLessonLighting.acquire('phases', moon); // Moon-only lighting, shared with the Earth–Moon view.
                 notify = onChange;
                 // Start at New Moon: the Moon on the Earth–Sun line, towards the Sun.
                 const sun = planets.find(mesh => mesh.userData.name === 'Slnko');
@@ -2058,7 +2131,7 @@
             bodyInfo: learnBodyInfo,
             closeInfo: closePopup,
             exitQuiz: () => { if (isQuizMode || isQuizResults) stopQuiz(); },
-            sync: () => { syncNavigationPresentation(); cameraFrameDirty = true; },
+            sync: () => { syncNavigationPresentation(); cameraFrameDirty = true; earthMoonView.update(); },
             cancel: () => { earthLessonExperiment.end(); moonPhaseExperiment.end(); if (controls) { cancelCameraTransition(); planetLabels.hide(); } },
             // Experiment registry keyed by lesson experiment kind.
             experiments: Object.freeze({ 'earth-day-night': earthLessonExperiment, 'moon-phases': moonPhaseExperiment }),
@@ -2077,7 +2150,8 @@
                     const name = learnBodyInfo(demo.body)?.name;
                     const mesh = name && planets.find(p => p.userData.name === name);
                     if (!mesh) return;
-                    if (areOrbitsActive) toggleOrbit();
+                    // Focus demonstrations pause the system unless the step observes motion (demo.motion).
+                    if (areOrbitsActive !== !!demo.motion) toggleOrbit();
                     selectedNavigationPlanet = name; focusPlanet(mesh, true, demo.view);
                 }
                 syncNavigationPresentation();
