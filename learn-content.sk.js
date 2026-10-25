@@ -3,7 +3,7 @@ window.LearnContent = {
   topics: [
     { id: 'nasa-slnecna-sustava', title: 'Naša slnečná sústava', description: 'Spoznaj našu vesmírnu rodinu a pozri sa zblízka na Slnko a Zem.', minutes: 3 },
     { id: 'slnko', title: 'Slnko – naša hviezda', description: 'Preskúmaj svetlo zo Slnka a zisti, prečo sa na Zemi strieda deň a noc.', minutes: 4 },
-    { id: 'planety', title: 'Spoznaj planéty', description: 'Vydaj sa na expedíciu ku všetkým ôsmim planétam a zisti, čím sa od seba líšia.', minutes: 5 },
+    { id: 'planety', title: 'Spoznaj planéty', description: 'Vydaj sa na expedíciu ku všetkým ôsmim planétam a zisti, čím sa od seba líšia.', minutes: 7 },
     { id: 'zem-mesiac', title: 'Zem a Mesiac' },
     { id: 'pohyb', title: 'Pohyb vo vesmíre' },
     { id: 'obri', title: 'Vesmírni obri' }
@@ -54,12 +54,26 @@ window.LearnContent = {
         { body: 'earth', title: 'Zem', text: 'Zem je náš domov. Je to jediná planéta, o ktorej vieme, že na nej žijú rastliny, zvieratá a ľudia. Na jej povrchu je kvapalná voda.', fact: 'Približne 70 % povrchu Zeme pokrýva voda.' },
         { body: 'mars', title: 'Mars', text: 'Mars sa volá Červená planéta. Jeho povrch pokrýva prach a kamene so zhrdzaveným železom, preto je červenkastý.', fact: 'Je tu Olympus Mons, najvyššia známa sopka v slnečnej sústave. Je asi 2,5-krát vyššia ako Mount Everest.', note: 'Mars má dva malé mesiace. V modeli vidíš iba jeden z nich.' }
       ] },
-      { id: 'vonkajsie', type: 'tour', title: 'Obri slnečnej sústavy', next: 'Dokončiť expedíciu', nextShort: 'Dokončiť →', stops: [
+      { id: 'vonkajsie', type: 'tour', title: 'Obri slnečnej sústavy', next: 'Roztrieď planéty', nextShort: 'Roztrieď →', stops: [
         { body: 'jupiter', title: 'Jupiter', text: 'Jupiter je najväčšia planéta. Je to plynný obor – tvorí ho najmä vodík a hélium a nemá pevný povrch, na ktorý by sa dalo pristáť.', fact: 'Veľká červená škvrna na Jupiteri je obrovská búrka, ktorá je väčšia ako celá Zem.', note: 'V modeli je Jupiter zmenšený. Má veľa mesiacov, no vidíš iba jeden – Európu.' },
         { body: 'saturn', title: 'Saturn', text: 'Saturn je druhá najväčšia planéta a tiež plynný obor. Je známy svojimi nádhernými prstencami.', fact: 'Prstence tvoria nespočetné kúsky ľadu a kameňa. Prstence majú aj Jupiter, Urán a Neptún, no sú oveľa slabšie.', note: 'Saturn má veľa mesiacov. Model ich nezobrazuje.' },
         { body: 'uranus', title: 'Urán', text: 'Urán je ľadový obor. Pod atmosférou ukrýva veľa vody, čpavku a metánu – vedci tieto látky nazývajú ľady. Metán mu dáva modrozelenú farbu.', fact: 'Urán je naklonený takmer na bok. Okolo Slnka sa pohybuje, akoby sa kotúľal.', note: 'Tento veľký sklon v našom modeli neuvidíš.' },
         { body: 'neptune', title: 'Neptún', text: 'Neptún je ľadový obor a najvzdialenejšia planéta od Slnka. Jeden obeh okolo Slnka mu trvá asi 165 rokov.', fact: 'Fúkajú tu najsilnejšie vetry v slnečnej sústave – rýchlejšie ako 2 000 km/h.' }
       ] },
+      // Deterministic mixed order; answers are checked against planetGroups.
+      { id: 'triedenie', type: 'classify', title: 'Roztrieď planéty',
+        doneTitle: 'Planéty sú roztriedené!', doneText: 'Štyri kamenné planéty obiehajú blízko Slnka. Za nimi sú dvaja plynní obri a dvaja ľadoví obri.',
+        groups: [{ id: 'terrestrial', label: 'Kamenná planéta' }, { id: 'gas-giant', label: 'Plynný obor' }, { id: 'ice-giant', label: 'Ľadový obor' }],
+        items: [
+          { body: 'mars', group: 'terrestrial', hint: 'Má Mars pevný povrch, po ktorom by sa dalo prechádzať? Je to malá planéta blízko Slnka, alebo obor?', confirm: 'Správne! Mars je kamenná planéta – má pevný, kamenistý povrch.' },
+          { body: 'saturn', group: 'gas-giant', hint: 'Saturn je druhá najväčšia planéta a nemá pevný povrch. Pamätáš si, či ho tvoria najmä plyny, alebo ľady?', confirm: 'Správne! Saturn je plynný obor – tvorí ho najmä vodík a hélium.' },
+          { body: 'neptune', group: 'ice-giant', hint: 'Neptún je najďalej od Slnka a pod atmosférou ukrýva veľa vody, čpavku a metánu. Ako vedci nazývajú tieto látky?', confirm: 'Správne! Neptún je ľadový obor.' },
+          { body: 'venus', group: 'terrestrial', hint: 'Venuša je takmer taká veľká ako Zem a má pevný povrch. Patrí k menším planétam blízko Slnka, alebo k obrom?', confirm: 'Správne! Venuša je kamenná planéta, hoci ju zakrývajú husté oblaky.' },
+          { body: 'jupiter', group: 'gas-giant', hint: 'Jupiter je najväčšia planéta a nedá sa na ňom pristáť, lebo nemá pevný povrch. Tvoria ho skôr plyny, alebo ľady?', confirm: 'Správne! Jupiter je plynný obor – najväčšia planéta slnečnej sústavy.' },
+          { body: 'mercury', group: 'terrestrial', hint: 'Merkúr je najmenšia planéta a obieha najbližšie k Slnku. Jeho povrch je pevný a plný kráterov.', confirm: 'Správne! Merkúr je kamenná planéta.' },
+          { body: 'uranus', group: 'ice-giant', hint: 'Urán je modrozelený obor ďaleko od Slnka. Spomeň si, čo ukrýva pod atmosférou: vodu, čpavok a metán.', confirm: 'Správne! Urán je ľadový obor.' },
+          { body: 'earth', group: 'terrestrial', hint: 'Žijeme na pevnom povrchu Zeme. Je Zem menšia planéta blízko Slnka, alebo obor?', confirm: 'Správne! Zem je kamenná planéta – náš domov.' }
+        ] },
       { id: 'zaver', type: 'summary', title: 'Výborne! Expedícia je na konci.', ideas: ['Okolo Slnka obieha osem planét – od Merkúra po Neptún.', 'Kamenné planéty Merkúr, Venuša, Zem a Mars sú menšie, majú pevný povrch a sú bližšie k Slnku.', 'Plynní obri Jupiter a Saturn sú najväčšie planéty a nemajú pevný povrch.', 'Ľadoví obri Urán a Neptún sú najďalej od Slnka a ukrývajú veľa vody, čpavku a metánu.'], text: 'Pokračuj v objavovaní alebo si vyskúšaj kvíz o všetkých ôsmich planétach.' }
     ]
   }]

@@ -168,3 +168,57 @@ body.is-learn #info-card { display: none !important; }
  #learn-root[data-layout="side"] .learn-header button, #learn-root[data-layout="side"] .learn-footer button { padding: 8px; font-size: 13px; white-space: nowrap; }
  #learn-root[data-layout="side"] .learn-footer .learn-primary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* Phase 6E.3: planet classification – one planet, three large answers, then the 4 + 2 + 2 result. */
+.learn-classify-question { margin-bottom: 10px; font-weight: 600; }
+.learn-classify-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+#learn-root .learn-classify-choice { min-height: 56px; padding: 8px 6px; border-width: 2px; line-height: 1.25; }
+#learn-root .learn-classify-choice.is-incorrect { border-color: #e3a18a; background: #e3a18a14; }
+#learn-root .learn-classify-choice.is-correct { border-color: #77c4a4; background: #77c4a41a; opacity: 1; }
+.learn-classify-choice.is-incorrect::before { content: '✕ ' / ''; color: #f0baa7; }
+.learn-classify-choice.is-correct::before { content: '✓ ' / ''; color: #a8e3c9; }
+.learn-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.learn-classify-result { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.learn-classify-group { padding: 10px 8px; border: 1px solid #8bc0dd33; border-radius: 12px; background: #ffffff05; }
+.learn-classify-group[data-group="terrestrial"] { border-color: #d8a77299; }
+.learn-classify-group[data-group="gas-giant"] { border-color: #e0c08599; }
+.learn-classify-group[data-group="ice-giant"] { border-color: #7ccbe699; }
+#learn-root .learn-classify-group h3 { margin: 0; font-size: 15px; line-height: 1.3; }
+.learn-classify-count { margin: 2px 0 8px; color: #c1d7e5; font-size: 13px; }
+.learn-classify-group ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.learn-classify-group li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.learn-classify-group .planet-thumbnail { flex-shrink: 0; width: 24px; height: 24px; }
+@media (max-width: 700px) {
+ .learn-classify-question { margin-bottom: 8px; }
+ .learn-classify-choices { gap: 6px; margin-bottom: 10px; }
+ #learn-root .learn-classify-choice { min-height: 52px; padding: 6px 4px; font-size: 14px; }
+ .learn-classify-result { gap: 6px; }
+ .learn-classify-group { padding: 8px 6px; }
+ #learn-root .learn-classify-group h3 { font-size: 13px; }
+}
+@media (max-width: 700px) {
+ .is-classify .learn-recenter { display: none; }
+ .learn-classify-feedback { font-size: 14px; }
+ .learn-classify-group ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 2px; font-size: 11px; }
+ .learn-classify-group li { flex-direction: column; gap: 2px; text-align: center; }
+ .learn-classify-group .planet-thumbnail { width: 24px; height: 24px; }
+ .learn-classify-count { margin-bottom: 6px; font-size: 12px; }
+ /* The 4 + 2 + 2 result may use the Learn home height; the overview behind it is secondary. */
+ #learn-root.learn-panel.is-result { max-height: calc(100dvh - 262px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+}
+/* Short landscape: classification takes the toolbar's height, as phones already hide it in Learn. */
+@media (min-width: 701px) and (max-width: 900px) and (max-height: 600px) {
+ body.is-learn-classify .simulation-controls { visibility: hidden; }
+ body.is-learn-classify #learn-root.learn-panel[data-layout="side"] { bottom: calc(12px + env(safe-area-inset-bottom)); }
+ [data-layout="side"].is-classify .learn-header > div { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+ [data-layout="side"] .learn-classify-question { margin-bottom: 6px; font-size: 14px; }
+ #learn-root[data-layout="side"] .learn-classify-choice { min-height: 48px; font-size: 13px; }
+ [data-layout="side"] .learn-classify-feedback { font-size: 13px; }
+ .is-classify[data-layout="side"] .learn-recenter { display: none; }
+ [data-layout="side"] .learn-classify-result { gap: 4px; }
+ [data-layout="side"] .learn-classify-group { padding: 6px 5px; }
+ #learn-root[data-layout="side"] .learn-classify-group h3 { font-size: 12px; }
+ [data-layout="side"] .learn-classify-group ul { gap: 3px; font-size: 11px; }
+ [data-layout="side"] .learn-classify-group li { gap: 4px; }
+ [data-layout="side"] .learn-classify-group .planet-thumbnail { width: 18px; height: 18px; }
+}
