@@ -242,7 +242,9 @@ window.Learn = (() => {
     session++; adapter.cancel(); experimentDetailsOpen = false; step = index; answer = null; feedback = null; notice = null;
     stop = target.type === 'tour' && target.stops[stopIndex] ? stopIndex : target.type === 'classify' ? Math.min(Math.max(stopIndex, 0), target.items.length) : 0;
     if (target.type === 'classify') classifyState(target);
-    completed = lesson.steps[step].type === 'summary'; expanded = target.type === 'tour' && compactTourLayout.matches ? tourReading : compactView(target) ? viewReading : true; render(); demonstrate();
+    completed = lesson.steps[step].type === 'summary'; expanded = target.type === 'tour' && compactTourLayout.matches ? tourReading : compactView(target) ? viewReading : true; render();
+    root.scrollTop = 0; // A new step starts at its heading; short screens scroll the whole panel, which render() keeps.
+    demonstrate();
     if (target.type === 'classify') announce(classifyAnnouncement(target));
   }
   function demonstrate() {
