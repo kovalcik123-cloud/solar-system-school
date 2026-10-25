@@ -10,8 +10,12 @@ window.Learn = (() => {
   // Short screens open tours collapsed so the planet stays visible; short landscape tablets use a side panel.
   const compactTourLayout = window.matchMedia('(max-width: 900px) and (max-height: 740px)');
   const sideTourLayout = window.matchMedia('(min-width: 701px) and (max-width: 900px) and (max-height: 600px)');
+  // Steps whose 3D view must stay visible beside the panel on short landscape tablets.
+  const sideStep = s => s.type === 'tour' || s.type === 'classify' || s.demo?.view === 'earth-moon';
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
   function button(text, action, cls) { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', action); return b; }
+  // Learn-only camera views and the single body each one supports.
+  const views = Object.freeze({ 'day-night': 'earth', 'earth-moon': 'earth' });
   const filled = value => typeof value === 'string' && value.trim() !== '';
   const optionalText = value => value === undefined || filled(value);
   // Scientific groups come from content (planetGroups), never from rendering types.
@@ -67,7 +71,7 @@ window.Learn = (() => {
         // A short visible label keeps the full next label as its accessible name.
         if (!optionalText(s.nextShort) || s.nextShort !== undefined && !filled(s.next)) throw Error('Invalid lesson step');
         if (s.demo && ( !['overview','focus'].includes(s.demo.kind) || (s.demo.kind === 'focus' && !adapter.hasBody(s.demo.body)))) throw Error('Invalid lesson demonstration');
-        if (s.demo?.view && (s.demo.kind !== 'focus' || s.demo.body !== 'earth' || s.demo.view !== 'day-night')) throw Error('Invalid lesson view');
+        if (s.demo?.view && (s.demo.kind !== 'focus' || !Object.prototype.hasOwnProperty.call(views, s.demo.view) || views[s.demo.view] !== s.demo.body)) throw Error('Invalid lesson view');
         if (s.type === 'experiment' && (s.experiment?.kind !== 'earth-day-night' || s.demo?.body !== 'earth' || s.demo?.view !== 'day-night')) throw Error('Invalid lesson experiment');
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
         if (s.type === 'tour') validateTour(s, groupOf);
@@ -250,7 +254,7 @@ window.Learn = (() => {
     root.classList.toggle('is-tour', !!tour);
     root.classList.toggle('is-classify', !!sorting); root.classList.toggle('is-result', !!sorting && !item);
     document.body.classList.toggle('is-learn-classify', !!sorting);
-    if ((tour || sorting) && sideTourLayout.matches) root.dataset.layout = 'side'; else delete root.dataset.layout;
+    if (lesson && sideStep(lesson.steps[step]) && sideTourLayout.matches) root.dataset.layout = 'side'; else delete root.dataset.layout;
     const header = el('header', null, 'learn-header');
     const heading = el('h2', compactExperiment ? 'Pokus so Zemou' : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
     heading.id = 'learn-heading'; heading.tabIndex = -1;
@@ -451,7 +455,7 @@ window.Learn = (() => {
     body.inert = collapsed; adapter.sync();
   }
   shortExperimentLayout.addEventListener('change', () => { if (active && lesson?.steps[step].type === 'experiment') render(); });
-  sideTourLayout.addEventListener('change', () => { if (active && ['tour', 'classify'].includes(lesson?.steps[step].type)) render(false); });
+  sideTourLayout.addEventListener('change', () => { if (active && lesson && sideStep(lesson.steps[step])) render(false); });
   sheetLayout.addEventListener('change', syncResponsiveSheet);
   window.addEventListener('resize', syncResponsiveSheet);
   return { init(a) {

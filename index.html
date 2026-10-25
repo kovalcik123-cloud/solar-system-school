@@ -1237,6 +1237,7 @@
 
         // Camera-only focus state: a single transition, no timers or deferred callbacks.
         let cameraTransition = null, focusedBody = null, cameraQuizState = false;
+        let focusedView = null; // Learn view of the explicit focus, kept for layout reframing.
         let overviewActive = false;
         let normalFogDensity, cameraFogTransition = null;
         const reducedCameraMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -1267,7 +1268,13 @@
             return mesh.userData.radius * (mesh.userData.hasRings ? 2.25 : mesh.userData.name === 'Slnko' ? 1.3 : 1.06);
         }
 
-        function frameFocusedBody(mesh) {
+        // Learn-only Earth–Moon framing: the body plus the whole illustrative orbits of its satellites.
+        function systemRadius(mesh) {
+            return satellites.filter(moon => moon.userData.parent === mesh)
+                .reduce((radius, moon) => Math.max(radius, (moon.userData.distance + moon.userData.radius) * 1.06), focusRadius(mesh));
+        }
+
+        function frameFocusedBody(mesh, radius = focusRadius(mesh)) {
             const nav = document.getElementById('planet-nav').getBoundingClientRect();
             const panel = document.getElementById(Learn.active ? 'learn-root' : 'info-card');
             const info = panel.getBoundingClientRect();
@@ -1283,7 +1290,7 @@
             focusViewOffset.set(innerWidth / 2 - (left + width / 2), innerHeight / 2 - (top + height / 2));
             const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
             const angle = Math.atan(Math.min(tangent * height / innerHeight, tangent * camera.aspect * width / innerWidth) * 0.78);
-            return focusRadius(mesh) / Math.sin(angle);
+            return radius / Math.sin(angle);
         }
 
         function backgroundViewPenalty(mesh, direction) {
@@ -1360,6 +1367,8 @@
                 : camera.position.clone().sub(controls.target).normalize();
             if (direction.lengthSq() === 0) direction.set(0, 0.4, 1).normalize();
             cancelCameraTransition();
+            if (explicitSelection) focusedView = Learn.active ? lessonView : null;
+            const earthMoon = Learn.active && focusedView === 'earth-moon' && mesh.userData.name === 'Zem';
             if (explicitSelection) {
                 direction.copy(preferredFocusDirection(mesh, direction));
                 if (Learn.active && lessonView === 'day-night' && mesh.userData.name === 'Zem') {
@@ -1373,10 +1382,20 @@
                         .addScaledVector(tangent, Math.sin(azimuth) * Math.cos(elevation))
                         .addScaledVector(axis, Math.sin(elevation)).normalize();
                 }
+                if (earthMoon) {
+                    // Lesson-only: 55° above the orbit plane, perpendicular to sunlight, so Earth shows day and night.
+                    const axis = new THREE.Vector3(0, 1, 0);
+                    const tangent = new THREE.Vector3().crossVectors(axis, mesh.position.clone().negate().normalize()).normalize();
+                    const elevation = THREE.MathUtils.degToRad(55);
+                    direction.copy(tangent).multiplyScalar((Math.sign(tangent.dot(direction)) || 1) * Math.cos(elevation))
+                        .addScaledVector(axis, Math.sin(elevation)).normalize();
+                }
             }
             focusedBody = mesh; focusLastPosition.copy(mesh.position);
-            const distance = frameFocusedBody(mesh);
-            controls.minDistance = focusRadius(mesh) * 1.15;
+            // The Earth–Moon view frames the whole Moon orbit and keeps zoom outside it (no Earth or Moon collisions).
+            const radius = earthMoon ? systemRadius(mesh) : focusRadius(mesh);
+            const distance = frameFocusedBody(mesh, radius);
+            controls.minDistance = radius * 1.15;
             controls.maxDistance = Math.max(500, distance * 3, camera.position.distanceTo(controls.target) * 1.05);
             beginCameraTransition(mesh.position.clone().addScaledVector(direction, distance), mesh.position);
             if (Learn.active) syncNavigationPresentation();
@@ -1915,7 +1934,14 @@
         const hasLearnBody = id => typeof id === 'string' && Object.prototype.hasOwnProperty.call(learnBodies, id)
             && planetData.some(p => p.name === learnBodies[id]);
         const learnBodyId = name => Object.keys(learnBodies).find(id => learnBodies[id] === name) ?? null;
+        // Natural satellites Learn may name: metadata only. They are not focus targets (hasBody stays false).
+        const learnSatellites = Object.freeze({ moon: { parent: 'earth', name: 'Mesiac' } });
         function learnBodyInfo(id) {
+            if (typeof id === 'string' && Object.prototype.hasOwnProperty.call(learnSatellites, id)) {
+                const entry = learnSatellites[id];
+                const data = planetData.find(p => p.name === learnBodies[entry.parent])?.moons?.find(m => m.name === entry.name);
+                return data ? Object.freeze({ id, name: data.name, texture: data.texture, kind: 'satellite', parent: entry.parent }) : null;
+            }
             if (!hasLearnBody(id)) return null;
             const data = planetData.find(p => p.name === learnBodies[id]);
             return Object.freeze({ id, name: data.name, texture: data.texture, kind: data.distance3D === 0 ? 'star' : 'planet' });
