@@ -32,6 +32,14 @@ window.Learn = (() => {
     const k = Math.min(1, Math.max(0, fraction)), rx = r * Math.abs(1 - 2 * k);
     return `M 0 ${-r} A ${r} ${r} 0 0 ${litRight ? 1 : 0} 0 ${r} A ${rx.toFixed(2)} ${r} 0 0 ${(k > 0.5) === litRight ? 1 : 0} 0 ${-r} Z`;
   }
+  // Experiment actions stay focusable while busy: aria-disabled during an animation (the engines ignore repeat
+  // activation), native disabled only while the experiment is unavailable.
+  function setAvailability(button, unavailable, busy) {
+    button.disabled = unavailable;
+    if (busy && !unavailable) button.setAttribute('aria-disabled', 'true'); else button.removeAttribute('aria-disabled');
+  }
+  // Slovak "zo" before numbers whose spoken genitive starts with s/z/š (štyroch, šiestich, siedmich), else "z".
+  const stepOf = (n, total) => `Krok ${n} ${[4, 6, 7].includes(total) ? 'zo' : 'z'} ${total}`;
   const filled = value => typeof value === 'string' && value.trim() !== '';
   const optionalText = value => value === undefined || filled(value);
   // Scientific groups come from content (planetGroups), never from rendering types.
@@ -263,7 +271,7 @@ window.Learn = (() => {
     if (!experimentUI || !active || lesson?.steps[step].type !== 'experiment') return;
     const state = experimentOf(lesson.steps[step]).state();
     if (experimentUI.kind === 'moon-phases') { syncMoonPhases(state); return; }
-    experimentUI.turn.disabled = !state.active || state.busy;
+    setAvailability(experimentUI.turn, !state.active, state.busy);
     experimentUI.reset.disabled = !state.active;
     experimentUI.light.textContent = state.active ? (state.day ? 'DEŇ' : 'NOC') : 'Pripravujeme pokus…';
     experimentUI.light.dataset.day = String(!!state.day);
@@ -276,14 +284,16 @@ window.Learn = (() => {
   // Presentation only: the drawing, name and percentage come from the experiment's model geometry.
   function syncMoonPhases(state) {
     const ui = experimentUI;
-    ui.advance.disabled = !state.active || state.busy; ui.reset.disabled = !state.active;
+    setAvailability(ui.advance, !state.active, state.busy); ui.reset.disabled = !state.active;
     if (!state.active) { ui.name.textContent = 'Pripravujeme pokus…'; ui.fraction.textContent = ''; ui.position.textContent = ''; return; }
     const percent = Math.round(state.fraction * 100), name = state.name ?? 'Mesiac sa posúva…';
     ui.lit.setAttribute('d', phasePath(state.fraction, state.litRight));
     ui.name.textContent = name;
     ui.fraction.textContent = `Osvetlená časť: približne ${percent} %`;
     ui.position.textContent = `Poloha ${state.position} z ${state.positions}`;
-    ui.svg.setAttribute('aria-label', `Pohľad zo Zeme: ${name} Osvetlená časť približne ${percent} %, svetlá strana ${state.litRight ? 'vpravo' : 'vľavo'}.`);
+    // At New and Full Moon (0 % or 100 %) there is no lit side to name.
+    const side = percent > 0 && percent < 100 ? `, svetlá strana ${state.litRight ? 'vpravo' : 'vľavo'}` : '';
+    ui.svg.setAttribute('aria-label', `Pohľad zo Zeme: ${name.endsWith('…') ? name : `${name}.`} Osvetlená časť približne ${percent} %${side}.`);
     const announcement = state.busy ? '' : `${state.name}. Osvetlená časť približne ${percent} %.`;
     if (ui.status.textContent !== announcement) ui.status.textContent = announcement;
   }
@@ -309,7 +319,7 @@ window.Learn = (() => {
     heading.id = 'learn-heading'; heading.tabIndex = -1;
     const titles = el('div'), eyebrow = el('p', null, 'learn-eyebrow');
     if (lesson) {
-      eyebrow.append(el('span', tour ? tour.title : sorting ? sorting.title : lesson.title, 'learn-lesson-title'), el('span', `Krok ${step + 1} zo ${lesson.steps.length}`, 'learn-step-full'));
+      eyebrow.append(el('span', tour ? tour.title : sorting ? sorting.title : lesson.title, 'learn-lesson-title'), el('span', stepOf(step + 1, lesson.steps.length), 'learn-step-full'));
       const compact = el('span', `${step + 1}/${lesson.steps.length}`, 'learn-step-compact');
       compact.setAttribute('aria-hidden', 'true'); eyebrow.append(compact);
     } else eyebrow.textContent = 'Uč sa · Vesmír na dosah';

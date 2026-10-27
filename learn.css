@@ -11,7 +11,7 @@
 .learn-body p { margin-top: 0; }
 #learn-root button { min-height: 44px; padding: 10px 13px; border: 1px solid #8bc0dd44; border-radius: 10px; background: #ffffff08; color: #e8f2fa; cursor: pointer; text-transform: none; font: inherit; }
 #learn-root button:hover { background: #44aadd26; }
-#learn-root button:disabled { opacity: .5; cursor: default; }
+#learn-root button:disabled, #learn-root button[aria-disabled="true"] { opacity: .5; cursor: default; }
 #learn-root .learn-primary { background: #176184; border-color: #44aadd; }
 .learn-topics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
 .learn-topic { padding: 20px; border: 1px solid #8bc0dd33; background: #ffffff03; border-radius: 16px; }
