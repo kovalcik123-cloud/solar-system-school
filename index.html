@@ -189,6 +189,7 @@
         .process-brand { color: #b4c5d6; font-size: 12px; letter-spacing: 0.5px; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(139, 192, 221, 0.15); }
         .process-brand span { color: #73c7ef; }
         body.is-quiz .simulation-controls { visibility: hidden; }
+        body.is-comparison .simulation-controls { visibility: hidden; }
         #quiz-overlay, #info-card { box-sizing: border-box; width: min(370px, calc(100% - 24px)); max-width: 370px; max-height: calc(100dvh - 180px); overflow-y: auto; touch-action: pan-y pinch-zoom; }
         #quiz-overlay button, #results-screen button { min-height: 44px; }
         #results-screen { box-sizing: border-box; padding: 12px; }
@@ -429,6 +430,7 @@
 
     <script src="learn-content.sk.js"></script>
     <script src="learn.js"></script>
+    <script src="size-data.js"></script>
     <script>
         // CONFIG: Moons Added!
         const planetData = [
@@ -689,7 +691,7 @@
         }
 
         function selectPlanetByName(name) {
-            if (isQuizResults) return;
+            if (isQuizResults || comparisonStage.active) return;
             const targetMesh = planets.find(p => p.userData.name === name);
             if (targetMesh) {
                 if (isQuizMode) {
@@ -1088,7 +1090,8 @@
             earthLessonExperiment.update(now);
             moonPhaseExperiment.update(now);
             earthMoonView.update();
-            renderer.render(scene, camera);
+            comparisonStage.update();
+            if (!comparisonStage.render()) renderer.render(scene, camera);
             planetLabels.update(now);
         }
 
@@ -1100,7 +1103,7 @@
             let requested = false, dirty = true, layout, occupied = [], order = [];
             const invalidate = () => { dirty = true; };
             const observer = new ResizeObserver(invalidate);
-            const eligible = () => requested && !!controls && document.body.classList.contains('is-ready') && !isQuizMode && !isQuizResults && !focusedBody && !cameraTransition;
+            const eligible = () => requested && !!controls && document.body.classList.contains('is-ready') && !isQuizMode && !isQuizResults && !focusedBody && !cameraTransition && !comparisonStage.active;
             function restoreFocus(entry) {
                 if (document.activeElement !== entry.button) return;
                 const nav = document.querySelector(`#planet-nav [data-planet="${entry.mesh.userData.name}"]`);
@@ -1650,7 +1653,7 @@
             const el = document.elementFromPoint(x, y);
             if (el && (el.closest('.simulation-controls') || el.closest('#side-ui') || el.closest('#info-card') || el.closest('#quiz-overlay') || el.closest('#results-screen') || el.closest('#planet-nav') || el.closest('#planet-labels') || el.closest('#learn-root'))) return;
             
-            if (isWaiting || isQuizResults) return;
+            if (isWaiting || isQuizResults || comparisonStage.active) return;
 
             mouse.x = (x / window.innerWidth) * 2 - 1;
             mouse.y = -(y / window.innerHeight) * 2 + 1;
@@ -1816,7 +1819,7 @@
             planetLabels.sync();
             const sidebar = document.getElementById('side-ui');
             sidebar.inert = !ready || isQuizResults;
-            document.querySelector('.simulation-controls').inert = !ready || isQuizMode || isQuizResults;
+            document.querySelector('.simulation-controls').inert = !ready || isQuizMode || isQuizResults || comparisonStage.active;
             document.getElementById('explore-nav').setAttribute('aria-current', isQuizMode || isQuizResults || Learn.active ? 'false' : 'page');
             document.getElementById('learn-nav').setAttribute('aria-current', Learn.active ? 'page' : 'false');
             document.getElementById('quiz-nav').setAttribute('aria-current', isQuizMode || isQuizResults ? 'page' : 'false');
@@ -2103,6 +2106,108 @@
             return { begin, end, advance, reset, update, state, get active() { return !!saved; } };
         })();
 
+        // Learn-only size-comparison stage (Phase 6G): its own scene, camera, lights and objects, drawn by the shared
+        // renderer instead of the Solar System while active. Real sizes come from SizeData; the Solar System's
+        // illustrative meshes are never touched. Textures already loaded for the planets are shared, never disposed.
+        const comparisonStage = (() => {
+            let stage = null, sphere = null, saved = null, notify = null, config = null, objects = [], frameKey = '';
+            const FOV = 40;
+            // Built once and kept: the scene, camera, lights and one unit sphere shared by every comparison body.
+            function build() {
+                if (stage) return;
+                const stageScene = new THREE.Scene();
+                stageScene.background = new THREE.Color(0x000005);
+                const stageCamera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 0.01, 100);
+                stageCamera.position.set(0, 0, 10);
+                // Front lighting keeps every body's full outline visible; a soft key light keeps them round.
+                const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(-3, 2, 6);
+                stageScene.add(new THREE.AmbientLight(0xffffff, 0.55), key);
+                stage = { scene: stageScene, camera: stageCamera };
+                sphere = new THREE.SphereGeometry(1, 64, 64);
+            }
+            // The texture the Solar System already loaded for a body (null while loading: plain colour instead).
+            function sharedMap(id) {
+                const mesh = planets.find(p => p.userData.name === learnBodies[id]);
+                if (!mesh) return null;
+                return mesh.material.isShaderMaterial ? mesh.material.uniforms.dayMap?.value ?? null : mesh.material.map ?? null;
+            }
+            function clear() {
+                objects.forEach(object => { stage.scene.remove(object); object.material.dispose(); }); // Geometry and maps are shared.
+                objects = [];
+            }
+            function configure(next) {
+                if (!saved || !next || !SizeData.has(next.body) || !hasLearnBody(next.body)) return false;
+                clear(); config = Object.freeze({ body: next.body });
+                const map = sharedMap(config.body);
+                const material = config.body === 'sun' ? new THREE.MeshBasicMaterial({ color: 0xffffff, map })
+                    : new THREE.MeshStandardMaterial({ color: map ? 0xffffff : 0x9aa6b2, map, roughness: 1, metalness: 0 });
+                const mesh = new THREE.Mesh(sphere, material);
+                mesh.name = `comparison-${config.body}`;
+                stage.scene.add(mesh); objects.push(mesh);
+                frameKey = ''; publish();
+                return true;
+            }
+            // Usable area between the planet bar and the Learn panel or toolbar, as for the Solar System framing.
+            function frame() {
+                const nav = document.getElementById('planet-nav').getBoundingClientRect();
+                const panel = document.getElementById('learn-root'), rect = panel.getBoundingClientRect();
+                const sheet = matchMedia('(max-width: 900px)').matches && panel.dataset.layout !== 'side';
+                const visible = !panel.hidden && rect.height > 0;
+                const left = mobileInfoLayout.matches ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
+                const right = visible && !sheet ? rect.left - 20 : innerWidth - 20;
+                const top = nav.bottom + 12, bottom = visible && sheet ? rect.top - 12 : innerHeight - 16;
+                const key = [innerWidth, innerHeight, left, right, top, bottom].map(Math.round).join();
+                if (key === frameKey) return;
+                frameKey = key;
+                const width = Math.max(60, right - left), height = Math.max(60, bottom - top), camera = stage.camera;
+                camera.aspect = innerWidth / innerHeight;
+                const tangent = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+                const fit = Math.min(tangent * height / innerHeight, tangent * camera.aspect * width / innerWidth) * 0.8;
+                const distance = 1 / Math.sin(Math.atan(fit)); // The unit sphere fills 80 % of the usable area.
+                camera.position.set(0, 0, distance); camera.lookAt(0, 0, 0);
+                camera.near = distance * 0.05; camera.far = distance * 4;
+                camera.setViewOffset(innerWidth, innerHeight, innerWidth / 2 - (left + width / 2), innerHeight / 2 - (top + height / 2), innerWidth, innerHeight);
+                camera.updateProjectionMatrix();
+            }
+            function state() {
+                return saved ? { active: true, busy: false, body: config?.body ?? null } : { active: false, busy: false };
+            }
+            function publish() { if (notify) notify(); }
+            function begin(next, onChange) {
+                end();
+                if (!Learn.active || isQuizMode || isQuizResults) return false;
+                build();
+                // The hidden Solar System keeps its exact state: motion paused, camera transition stopped, no orbit or pick.
+                saved = { playing: areOrbitsActive, controls: controls.enabled };
+                if (areOrbitsActive) toggleOrbit();
+                cancelCameraTransition(); controls.enabled = false; planetLabels.sync(); // Labels are ineligible while active.
+                document.body.classList.add('is-comparison'); syncNavigationPresentation();
+                notify = onChange;
+                if (!configure(next)) { end(); return false; }
+                return true;
+            }
+            function end() {
+                if (!saved) return;
+                clear();
+                controls.enabled = saved.controls;
+                if (areOrbitsActive !== saved.playing) toggleOrbit();
+                document.body.classList.remove('is-comparison');
+                saved = null; config = null; notify = null; frameKey = '';
+                syncNavigationPresentation();
+            }
+            function update() {
+                if (saved && (!Learn.active || isQuizMode || isQuizResults)) end();
+            }
+            // Draws the stage instead of the Solar System; false when inactive.
+            function render() {
+                if (!saved) return false;
+                frame();
+                renderer.render(stage.scene, stage.camera);
+                return true;
+            }
+            return { begin, configure, end, update, render, state, get active() { return !!saved; } };
+        })();
+
         // One Learn body map. Lesson IDs resolve to existing scene bodies only.
         const learnBodies = Object.freeze({
             sun: 'Slnko', mercury: 'Merkúr', venus: 'Venuša', earth: 'Zem', mars: 'Mars',
@@ -2132,9 +2237,11 @@
             closeInfo: closePopup,
             exitQuiz: () => { if (isQuizMode || isQuizResults) stopQuiz(); },
             sync: () => { syncNavigationPresentation(); cameraFrameDirty = true; earthMoonView.update(); },
-            cancel: () => { earthLessonExperiment.end(); moonPhaseExperiment.end(); if (controls) { cancelCameraTransition(); planetLabels.hide(); } },
+            cancel: () => { earthLessonExperiment.end(); moonPhaseExperiment.end(); comparisonStage.end(); if (controls) { cancelCameraTransition(); planetLabels.hide(); } },
             // Experiment registry keyed by lesson experiment kind.
             experiments: Object.freeze({ 'earth-day-night': earthLessonExperiment, 'moon-phases': moonPhaseExperiment }),
+            // Size-comparison stages keyed by kind (Phase 6G); no lesson uses them yet.
+            stages: Object.freeze({ 'size-comparison': comparisonStage }),
             snapshot: () => ({ playing: areOrbitsActive, speed: simulationSpeed, orbits: areOrbitLinesVisible }),
             restore: saved => {
                 if (areOrbitsActive !== saved.playing) toggleOrbit();
