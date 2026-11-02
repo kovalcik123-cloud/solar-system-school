@@ -3,7 +3,7 @@ window.Learn = (() => {
   let adapter, root, active = false, lesson = null, step = 0, stop = 0, answer = null;
   let feedback = null, completed = false, session = 0, snapshot = null, expanded = true;
   let experimentUI = null, experimentDetailsOpen = false, notice = null, liveStatus = null, tourReading = false, viewReading = false;
-  let solved = new Set(), tried = new Set();
+  let solved = new Set(), tried = new Set(), comparisonPending = false;
   const data = window.LearnContent;
   const sheetLayout = window.matchMedia('(max-width: 900px)');
   const shortExperimentLayout = window.matchMedia('(max-width: 700px) and (min-height: 521px) and (max-height: 740px)');
@@ -13,7 +13,7 @@ window.Learn = (() => {
   // Phone portrait screens keep the Moon drawing and its buttons; the explanation opens on request.
   const compactMoonLayout = window.matchMedia('(max-width: 700px) and (min-height: 521px)');
   // Steps whose 3D view must stay visible beside the panel on short landscape tablets.
-  const sideStep = s => s.type === 'tour' || s.type === 'classify' || s.demo?.view === 'earth-moon';
+  const sideStep = s => s.type === 'tour' || s.type === 'classify' || s.demo?.view === 'earth-moon' || sizeComparison(s);
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
   function button(text, action, cls) { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', action); return b; }
   // Learn-only camera views and the single body each one supports.
@@ -22,8 +22,13 @@ window.Learn = (() => {
   const experimentViews = Object.freeze({ 'earth-day-night': 'day-night', 'moon-phases': 'earth-moon' });
   const dayNight = s => s?.type === 'experiment' && s.experiment.kind === 'earth-day-night';
   const moonPhases = s => s?.type === 'experiment' && s.experiment.kind === 'moon-phases';
-  const experimentOf = s => s?.type === 'experiment' ? adapter.experiments[s.experiment.kind] : null;
-  const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || moonPhases(s) && compactMoonLayout.matches;
+  // Stage-backed experiments (adapter.stages) draw their own scene and need no Solar System camera view.
+  const sizeComparison = s => s?.type === 'experiment' && s.experiment.kind === 'size-comparison';
+  const stageKind = kind => typeof kind === 'string' && Object.prototype.hasOwnProperty.call(adapter.stages ?? {}, kind);
+  const experimentOf = s => s?.type !== 'experiment' ? null : stageKind(s.experiment.kind) ? adapter.stages[s.experiment.kind] : adapter.experiments[s.experiment.kind];
+  const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || (moonPhases(s) || sizeComparison(s)) && compactMoonLayout.matches;
+  // The comparison the size-comparison experiment offers (Phase 6G.3); the stage accepts any planet pair.
+  const COMPARISON_PAIR = Object.freeze(['jupiter', 'earth']);
   const earthMoonStep = s => s?.demo?.view === 'earth-moon';
   // Short phones open Earth–Moon observations collapsed so both bodies stay visible; side panels already leave room.
   const compactView = s => s.type === 'observe' && earthMoonStep(s) && compactTourLayout.matches && !sideTourLayout.matches;
@@ -98,7 +103,11 @@ window.Learn = (() => {
         if (s.demo?.motion !== undefined && (typeof s.demo.motion !== 'boolean' || s.demo.kind !== 'focus' || s.type === 'experiment')) throw Error('Invalid lesson demonstration');
         if (s.type === 'observe' && !optionalText(s.note)) throw Error('Invalid lesson step');
         if (s.demo?.view && (s.demo.kind !== 'focus' || !Object.prototype.hasOwnProperty.call(views, s.demo.view) || views[s.demo.view] !== s.demo.body)) throw Error('Invalid lesson view');
-        if (s.type === 'experiment' && (!Object.prototype.hasOwnProperty.call(experimentViews, s.experiment?.kind) || !adapter.experiments?.[s.experiment.kind] || s.demo?.body !== 'earth' || s.demo?.view !== experimentViews[s.experiment.kind])) throw Error('Invalid lesson experiment');
+        if (s.type === 'experiment') {
+          const kind = s.experiment?.kind;
+          const earthView = Object.prototype.hasOwnProperty.call(experimentViews, kind) && !!adapter.experiments?.[kind] && s.demo?.body === 'earth' && s.demo?.view === experimentViews[kind];
+          if (!earthView && !(stageKind(kind) && s.demo === undefined)) throw Error('Invalid lesson experiment');
+        }
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
         if (s.type === 'tour') validateTour(s, groupOf);
         if (s.type === 'classify') validateClassify(s, groupOf);
@@ -259,18 +268,21 @@ window.Learn = (() => {
     if (!active || !lesson) return;
     const current = lesson.steps[step];
     const demo = stepDemo(current);
-    if (!demo) return;
+    if (!demo && !sizeComparison(current)) return;
     Object.values(adapter.experiments).forEach(experiment => experiment.end());
-    adapter.demonstrate(demo);
+    if (demo) adapter.demonstrate(demo);
     if (current.type === 'experiment') {
       const owner = session;
-      experimentOf(current).begin(current.experiment, () => { if (active && session === owner) syncExperiment(); });
+      comparisonPending = false;
+      // A comparison stage starts with all eight planets; Earth experiments receive their lesson configuration.
+      experimentOf(current).begin(sizeComparison(current) ? { lineup: 'planets' } : current.experiment, () => { if (active && session === owner) syncExperiment(); });
     }
   }
   function syncExperiment() {
     if (!experimentUI || !active || lesson?.steps[step].type !== 'experiment') return;
     const state = experimentOf(lesson.steps[step]).state();
     if (experimentUI.kind === 'moon-phases') { syncMoonPhases(state); return; }
+    if (experimentUI.kind === 'size-comparison') { syncComparison(state); return; }
     setAvailability(experimentUI.turn, !state.active, state.busy);
     experimentUI.reset.disabled = !state.active;
     experimentUI.light.textContent = state.active ? (state.day ? 'DEŇ' : 'NOC') : 'Pripravujeme pokus…';
@@ -297,6 +309,37 @@ window.Learn = (() => {
     const announcement = state.busy ? '' : `${state.name}. Osvetlená časť približne ${percent} %.`;
     if (ui.status.textContent !== announcement) ui.status.textContent = announcement;
   }
+  // Learn owns the controls and words; the stage owns objects, ratios and motion. One primary button changes with the
+  // state (compare → show/hide the reference row, with aria-pressed), so keyboard focus never sits on a vanishing control.
+  function syncComparison(state) {
+    const ui = experimentUI, [big, small] = COMPARISON_PAIR.map(id => adapter.bodyInfo(id).name);
+    const count = Math.round(SizeData.ratio(...COMPARISON_PAIR)), pair = !!state.pair, reference = !!state.reference;
+    setAvailability(ui.primary, !state.active, state.busy); setAvailability(ui.back, !state.active, state.busy);
+    ui.primary.textContent = !pair ? `Porovnaj ${small} a ${big}` : reference ? `Skryť ${count} Zemí` : `Ukáž ${count} Zemí`;
+    if (pair) ui.primary.setAttribute('aria-pressed', String(reference)); else ui.primary.removeAttribute('aria-pressed');
+    if (!pair && ui.back.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
+    ui.back.hidden = !pair;
+    const sentence = `${big} má približne ${count}-krát väčší priemer ako ${small}.`, row = `${count} Zemí vedľa seba má približne rovnakú šírku ako ${big}.`;
+    ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : !pair ? 'Všetkých osem planét je v skutočnom pomere priemerov.' : reference ? row : sentence;
+    // Kept in the layout in every state, so the panel (and the stage area above it) never changes height.
+    ui.note.style.visibility = pair ? '' : 'hidden';
+    // Each finished request is announced once in the Learn live region.
+    if (comparisonPending && state.active && !state.busy) {
+      comparisonPending = false;
+      announce(!pair ? 'Opäť vidíš všetkých osem planét v skutočnom pomere priemerov.' : reference ? `${row} Porovnávame priemery planét, nie ich objemy.` : sentence);
+    }
+  }
+  // Requests are ignored while the stage moves or reveals, so repeated activation cannot queue extra changes.
+  function compare(action) {
+    const current = active && lesson?.steps[step];
+    if (!sizeComparison(current)) return;
+    const stage = experimentOf(current), state = stage.state();
+    if (!state.active || state.busy) return;
+    const next = action === 'back' ? { lineup: 'planets' } : !state.pair ? { pair: [...COMPARISON_PAIR] } : { pair: [...COMPARISON_PAIR], reference: !state.reference };
+    comparisonPending = true;
+    if (!stage.configure(next)) comparisonPending = false;
+    syncExperiment();
+  }
   function render(focusKey) {
     experimentUI = null;
     const tour = !!lesson && lesson.steps[step].type === 'tour' ? lesson.steps[step] : null;
@@ -308,6 +351,7 @@ window.Learn = (() => {
     root.classList.toggle('is-expanded', expanded);
     root.classList.toggle('is-experiment', !!lesson && dayNight(lesson.steps[step]));
     root.classList.toggle('is-moon-experiment', !!lesson && moonPhases(lesson.steps[step]));
+    root.classList.toggle('is-comparison-experiment', !!lesson && sizeComparison(lesson.steps[step]));
     root.classList.toggle('is-earth-moon', !!lesson && earthMoonStep(lesson.steps[step]));
     root.classList.toggle('is-tour', !!tour);
     root.classList.toggle('is-classify', !!sorting); root.classList.toggle('is-result', !!sorting && !item);
@@ -315,7 +359,7 @@ window.Learn = (() => {
     document.body.classList.toggle('is-learn-moon', !!lesson && earthMoonStep(lesson.steps[step]));
     if (lesson && sideStep(lesson.steps[step]) && sideTourLayout.matches) root.dataset.layout = 'side'; else delete root.dataset.layout;
     const header = el('header', null, 'learn-header');
-    const heading = el('h2', compactExperiment ? (dayNight(lesson.steps[step]) ? 'Pokus so Zemou' : 'Fázy Mesiaca') : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
+    const heading = el('h2', compactExperiment ? (dayNight(lesson.steps[step]) ? 'Pokus so Zemou' : moonPhases(lesson.steps[step]) ? 'Fázy Mesiaca' : lesson.steps[step].title) : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
     heading.id = 'learn-heading'; heading.tabIndex = -1;
     const titles = el('div'), eyebrow = el('p', null, 'learn-eyebrow');
     if (lesson) {
@@ -468,6 +512,20 @@ window.Learn = (() => {
         details.append(el('p', s.text), el('p', s.note, 'learn-note'), button('Zopakovať ukážku', demonstrate));
         body.append(figure, actions, details, status);
       }
+      if (sizeComparison(s)) {
+        const info = el('p', null, 'learn-comparison-info'), note = el('p', 'Porovnávame priemery planét, nie ich objemy.', 'learn-comparison-note');
+        const primary = button('', () => compare('primary'), 'learn-primary'), back = button('Späť na všetky planéty', () => compare('back'));
+        primary.dataset.focus = 'comparison-primary'; back.dataset.focus = 'comparison-back';
+        const actions = el('div', null, 'learn-experiment-actions'); actions.append(primary, back);
+        experimentUI = { kind: 'size-comparison', info, note, primary, back };
+        const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
+        details.hidden = compactExperiment && !experimentDetailsOpen;
+        if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
+        if (s.text) details.append(el('p', s.text));
+        if (s.note) details.append(el('p', s.note, 'learn-note'));
+        details.append(button('Začať porovnanie odznova', demonstrate));
+        body.append(info, note, actions, details);
+      }
       if (s.type === 'question') {
         const group = el('fieldset'); group.append(el('legend', 'Vyber jednu odpoveď'));
         for (const option of s.options) {
@@ -537,7 +595,7 @@ window.Learn = (() => {
     body.inert = collapsed; adapter.sync();
   }
   shortExperimentLayout.addEventListener('change', () => { if (active && dayNight(lesson?.steps[step])) render(); });
-  compactMoonLayout.addEventListener('change', () => { if (active && moonPhases(lesson?.steps[step])) render(); });
+  compactMoonLayout.addEventListener('change', () => { if (active && (moonPhases(lesson?.steps[step]) || sizeComparison(lesson?.steps[step]))) render(); });
   sideTourLayout.addEventListener('change', () => { if (active && lesson && sideStep(lesson.steps[step])) render(false); });
   sheetLayout.addEventListener('change', syncResponsiveSheet);
   window.addEventListener('resize', syncResponsiveSheet);

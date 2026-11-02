@@ -2111,8 +2111,8 @@
         // illustrative meshes are never touched. Textures already loaded for the planets are shared, never disposed.
         const comparisonStage = (() => {
             let stage = null, sphere = null, saved = null, notify = null, config = null, frameKey = '', overlay = null;
-            let bodies = new Map(), references = [], referenceMaterial = null, transition = null, layouts = null;
-            const FOV = 40, TRANSITION_MS = 700;
+            let bodies = new Map(), references = [], referenceMaterial = null, transition = null, layouts = null, reveal = null;
+            const FOV = 40, TRANSITION_MS = 700, REVEAL_MS = 600;
             // The eight planets, largest to smallest.
             const LINEUP = Object.freeze(['jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'venus', 'mars', 'mercury']);
             // Built once and kept: the scene, both cameras, lights and one unit sphere shared by every comparison body.
@@ -2162,9 +2162,11 @@
             // Earth-sized reference spheres: the shared sphere and one shared material using Earth's existing texture.
             function setReferences(count) {
                 if (references.length === count) return;
-                references.forEach(mesh => stage.scene.remove(mesh)); references = [];
+                references.forEach(mesh => stage.scene.remove(mesh)); references = []; reveal = null;
                 if (referenceMaterial) { referenceMaterial.dispose(); referenceMaterial = null; }
                 if (!count) return;
+                // A new row appears Earth by Earth over REVEAL_MS (all at once with reduced motion); geometry is unchanged.
+                reveal = reducedCameraMotion.matches ? null : performance.now();
                 const map = sharedMap('earth');
                 referenceMaterial = new THREE.MeshStandardMaterial({ color: map ? 0xffffff : 0x9aa6b2, map, roughness: 1, metalness: 0 });
                 for (let i = 0; i < count; i++) {
@@ -2406,12 +2408,17 @@
                 });
                 // Reference centres sit on the larger body's equator (y is the screen y of that centre line).
                 (to.references || []).forEach((ref, i) => { if (references[i]) { references[i].scale.setScalar(ref.r); references[i].position.set(ref.x, -ref.y, ref.z); } });
+                if (reveal !== null) {
+                    const elapsed = now - reveal;
+                    references.forEach((mesh, i) => { mesh.visible = elapsed >= i * REVEAL_MS / references.length; });
+                    if (elapsed >= REVEAL_MS) { reveal = null; references.forEach(mesh => { mesh.visible = true; }); publish(); }
+                }
                 overlay.dataset.view = transition ? 'moving' : config.lineup ? 'lineup' : 'pair';
                 overlay.dataset.scale = String(scale);
             }
             function state() {
                 if (!saved) return { active: false, busy: false };
-                return { active: true, busy: !!transition, body: config?.body ?? null, lineup: config?.lineup ?? null, pair: config?.pair ? [...config.pair] : null,
+                return { active: true, busy: !!transition || reveal !== null, body: config?.body ?? null, lineup: config?.lineup ?? null, pair: config?.pair ? [...config.pair] : null,
                     reference: !!config?.reference, references: references.length };
             }
             function publish() { if (notify) notify(); }

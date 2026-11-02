@@ -355,3 +355,34 @@ body.is-learn #info-card { display: none !important; }
  .comparison-sentence { font-size: 14px; }
  .comparison-reference { font-size: 13px; }
 }
+
+/* Phase 6G.3.2: size-comparison experiment – one changing primary action, the return action and short explanations. */
+.learn-comparison-info { margin-bottom: 4px; font-size: 16px; font-weight: 600; }
+.learn-comparison-note { color: #c3d2de; font-size: 14px; }
+.is-comparison-experiment .learn-experiment-actions button[hidden] { display: none; }
+/* Short landscape: the stage hides the toolbar, so the side panel takes its height. */
+body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12px + env(safe-area-inset-bottom)); }
+[data-layout="side"].is-comparison-experiment .learn-experiment-actions { flex-wrap: nowrap; gap: 6px; margin: 0 0 8px; }
+#learn-root[data-layout="side"].is-comparison-experiment .learn-experiment-actions button { flex: 1; min-width: 0; padding: 8px 6px; font-size: 13px; }
+/* Phone portrait: the actions stay visible and the explanation opens on request, so the planets keep the height. */
+@media (max-width: 700px) and (min-height: 521px) {
+ .learn-panel.is-comparison-experiment .learn-header { padding: 8px 12px; gap: 6px; align-items: center; flex-shrink: 0; }
+ #learn-root.is-comparison-experiment h2 { margin-top: 2px; font-size: 17px; }
+ #learn-root.is-comparison-experiment .learn-header button { padding: 8px 10px; font-size: 14px; }
+ .learn-panel.is-comparison-experiment .learn-progress { margin: 0 12px 8px; }
+ .learn-panel.is-comparison-experiment .learn-body { padding: 0 12px 8px; }
+ /* The overlay under the planets already shows this sentence; screen readers still get it here and in announcements. */
+ .is-comparison-experiment .learn-comparison-info { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+ .is-comparison-experiment .learn-comparison-note { margin-bottom: 6px; font-size: 13px; }
+ .is-comparison-experiment .learn-experiment-actions { flex-wrap: nowrap; gap: 6px; margin: 0; }
+ #learn-root.is-comparison-experiment .learn-experiment-actions button { flex: 1; min-width: 0; padding: 8px 6px; font-size: 14px; }
+ .is-comparison-experiment .learn-experiment-details { margin-top: 8px; max-height: 96px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid #8bc0dd33; padding-top: 8px; font-size: 15px; }
+ .is-comparison-experiment .learn-experiment-details:focus-visible { outline: 2px solid #8bd8ff; outline-offset: -2px; }
+ .learn-panel.is-comparison-experiment .learn-footer { padding: 6px 12px; gap: 6px; flex-shrink: 0; }
+}
+@media (max-width: 700px) and (min-height: 521px) and (max-height: 740px) {
+ .learn-panel.is-comparison-experiment .learn-header { padding: 6px 10px; }
+ .learn-panel.is-comparison-experiment .learn-progress { display: none; }
+ .learn-panel.is-comparison-experiment .learn-body { padding: 0 10px 6px; }
+ .learn-panel.is-comparison-experiment .learn-footer { padding: 6px 10px; }
+}
