@@ -29,6 +29,20 @@ window.Learn = (() => {
   const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || (moonPhases(s) || sizeComparison(s)) && compactMoonLayout.matches;
   // The comparison the size-comparison experiment offers (Phase 6G.3); the stage accepts any planet pair.
   const COMPARISON_PAIR = Object.freeze(['jupiter', 'earth']);
+  // Approved configured comparisons (Phase 6G.4.2): a lesson may start at one pair and reveal the next. Only these exact
+  // start → reveal combinations are accepted, so content cannot ask the stage for an unapproved star comparison.
+  const REVEALS = Object.freeze([Object.freeze({
+    start: Object.freeze(['jupiter', 'earth']), reveal: Object.freeze(['sun', 'jupiter']), show: 'Odhaľ veľkosť Slnka', back: 'Späť k Jupiteru',
+    intro: 'Jupiter je najväčšia planéta našej slnečnej sústavy. Ale aký veľký je v porovnaní so Slnkom?'
+  })]);
+  const samePair = (a, b) => Array.isArray(a) && a.length === 2 && a.every(id => typeof id === 'string') && [...a].sort().join() === [...b].sort().join();
+  function revealOf(s) {
+    const e = s?.experiment;
+    if (!sizeComparison(s) || e.start === undefined && e.reveal === undefined) return null;
+    return REVEALS.find(r => samePair(e.start?.pair, r.start) && samePair(e.reveal?.pair, r.reveal)) ?? null;
+  }
+  // Spoken ratio words for the live region; the visible text keeps the numeral.
+  const TIMES = Object.freeze({ 2: 'dvakrát', 3: 'trikrát', 4: 'štyrikrát', 5: 'päťkrát', 10: 'desaťkrát', 11: 'jedenásťkrát' });
   const earthMoonStep = s => s?.demo?.view === 'earth-moon';
   // Short phones open Earth–Moon observations collapsed so both bodies stay visible; side panels already leave room.
   const compactView = s => s.type === 'observe' && earthMoonStep(s) && compactTourLayout.matches && !sideTourLayout.matches;
@@ -107,6 +121,12 @@ window.Learn = (() => {
           const kind = s.experiment?.kind;
           const earthView = Object.prototype.hasOwnProperty.call(experimentViews, kind) && !!adapter.experiments?.[kind] && s.demo?.body === 'earth' && s.demo?.view === experimentViews[kind];
           if (!earthView && !(stageKind(kind) && s.demo === undefined)) throw Error('Invalid lesson experiment');
+          // A comparison step is either unconfigured (the planet lineup) or exactly one approved start → reveal pair.
+          if (kind === 'size-comparison') {
+            const keys = Object.keys(s.experiment), part = v => v === undefined || v && typeof v === 'object' && Object.keys(v).length === 1 && Array.isArray(v.pair);
+            if (keys.some(k => !['kind', 'start', 'reveal'].includes(k)) || !part(s.experiment.start) || !part(s.experiment.reveal)) throw Error('Invalid lesson experiment');
+            if ((s.experiment.start !== undefined || s.experiment.reveal !== undefined) && !revealOf(s)) throw Error('Invalid lesson experiment');
+          }
         }
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
         if (s.type === 'tour') validateTour(s, groupOf);
@@ -274,8 +294,10 @@ window.Learn = (() => {
     if (current.type === 'experiment') {
       const owner = session;
       comparisonPending = false;
-      // A comparison stage starts with all eight planets; Earth experiments receive their lesson configuration.
-      experimentOf(current).begin(sizeComparison(current) ? { lineup: 'planets' } : current.experiment, () => { if (active && session === owner) syncExperiment(); });
+      // A comparison stage starts with all eight planets (or a configured step's start pair); Earth experiments receive
+      // their lesson configuration.
+      const reveal = revealOf(current);
+      experimentOf(current).begin(!sizeComparison(current) ? current.experiment : reveal ? { pair: [...reveal.start] } : { lineup: 'planets' }, () => { if (active && session === owner) syncExperiment(); });
     }
   }
   function syncExperiment() {
@@ -312,6 +334,7 @@ window.Learn = (() => {
   // Learn owns the controls and words; the stage owns objects, ratios and motion. One primary button changes with the
   // state (compare → show/hide the reference row, with aria-pressed), so keyboard focus never sits on a vanishing control.
   function syncComparison(state) {
+    if (experimentUI.reveal) { syncReveal(state); return; }
     const ui = experimentUI, [big, small] = COMPARISON_PAIR.map(id => adapter.bodyInfo(id).name);
     const count = Math.round(SizeData.ratio(...COMPARISON_PAIR)), pair = !!state.pair, reference = !!state.reference;
     setAvailability(ui.primary, !state.active, state.busy); setAvailability(ui.back, !state.active, state.busy);
@@ -329,13 +352,30 @@ window.Learn = (() => {
       announce(!pair ? 'Opäť vidíš všetkých osem planét v skutočnom pomere priemerov.' : reference ? `${row} Porovnávame priemery planét, nie ich objemy.` : sentence);
     }
   }
+  // Configured reveal (Phase 6G.4.2): one primary button toggles between the start pair and the revealed pair. The stage
+  // state is the only record of which pair is shown; while it moves, the button keeps its label and is aria-disabled.
+  function syncReveal(state) {
+    const ui = experimentUI, { start, reveal, show, back, intro } = ui.reveal, shown = state.pair && samePair(state.pair, reveal) ? reveal : start;
+    const [big, small] = shown.map(id => adapter.bodyInfo(id).name), count = Math.round(SizeData.ratio(...shown));
+    setAvailability(ui.primary, !state.active, state.busy); ui.back.hidden = true;
+    if (!state.busy || !ui.primary.textContent) {
+      const revealed = shown === reveal;
+      ui.primary.textContent = revealed ? back : show;
+      ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : revealed ? `${big} má približne ${count}-krát väčší priemer ako ${small}.` : intro;
+    }
+    if (comparisonPending && state.active && !state.busy) {
+      comparisonPending = false;
+      announce(`${big} má približne ${TIMES[count] ?? `${count}-krát`} väčší priemer ako ${small}. Porovnávame priemery, nie objemy.`);
+    }
+  }
   // Requests are ignored while the stage moves or reveals, so repeated activation cannot queue extra changes.
   function compare(action) {
     const current = active && lesson?.steps[step];
     if (!sizeComparison(current)) return;
     const stage = experimentOf(current), state = stage.state();
     if (!state.active || state.busy) return;
-    const next = action === 'back' ? { lineup: 'planets' } : !state.pair ? { pair: [...COMPARISON_PAIR] } : { pair: [...COMPARISON_PAIR], reference: !state.reference };
+    const reveal = revealOf(current);
+    const next = reveal ? { pair: [...(state.pair && samePair(state.pair, reveal.reveal) ? reveal.start : reveal.reveal)] } : action === 'back' ? { lineup: 'planets' } : !state.pair ? { pair: [...COMPARISON_PAIR] } : { pair: [...COMPARISON_PAIR], reference: !state.reference };
     comparisonPending = true;
     if (!stage.configure(next)) comparisonPending = false;
     syncExperiment();
@@ -513,11 +553,13 @@ window.Learn = (() => {
         body.append(figure, actions, details, status);
       }
       if (sizeComparison(s)) {
-        const info = el('p', null, 'learn-comparison-info'), note = el('p', 'Porovnávame priemery planét, nie ich objemy.', 'learn-comparison-note');
+        const reveal = revealOf(s);
+        const info = el('p', null, 'learn-comparison-info'), note = el('p', reveal ? 'Porovnávame priemery, nie objemy.' : 'Porovnávame priemery planét, nie ich objemy.', 'learn-comparison-note');
         const primary = button('', () => compare('primary'), 'learn-primary'), back = button('Späť na všetky planéty', () => compare('back'));
         primary.dataset.focus = 'comparison-primary'; back.dataset.focus = 'comparison-back';
         const actions = el('div', null, 'learn-experiment-actions'); actions.append(primary, back);
         experimentUI = { kind: 'size-comparison', info, note, primary, back };
+        if (reveal) { back.hidden = true; experimentUI.reveal = reveal; }
         const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
         details.hidden = compactExperiment && !experimentDetailsOpen;
         if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
