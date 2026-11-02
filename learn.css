@@ -334,7 +334,24 @@ body.is-learn #info-card { display: none !important; }
 .comparison-markers span { position: absolute; transform: translateX(-50%); font-size: 14px; font-weight: 700; color: #b5ebff; }
 [data-mode="numbers"] .comparison-list { position: absolute; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, auto); grid-auto-flow: column; gap: 0 12px; }
 [data-mode="numbers"] .comparison-list li { flex-direction: row; align-items: baseline; gap: 5px; font-size: 13px; line-height: 1.3; text-align: left; white-space: nowrap; }
-[data-mode="numbers"] .comparison-size { font-size: 12px; }
+[data-mode="numbers"] .comparison-list .comparison-size { font-size: 12px; }
 [data-mode="numbers"] .comparison-number { display: inline-block; min-width: 1.1em; color: #b5ebff; font-weight: 700; }
 .comparison-note { position: absolute; margin: 0; color: #c3d2de; font-size: 14px; line-height: 1.35; text-align: center; }
 @media (max-width: 700px), (max-height: 600px) { .comparison-note { font-size: 12px; } }
+
+/* Phase 6G.3.1: pair comparison – two labels, the ratio sentence and the reference caption; one group shows at a time,
+   both stay measurable (visibility, not display), and nothing shows while the planets move. */
+#comparison-overlay[data-view="pair"] > :not(.comparison-pair), #comparison-overlay[data-view="lineup"] > .comparison-pair,
+#comparison-overlay[data-view="moving"] > *, #comparison-overlay:not([data-view]) > * { visibility: hidden; }
+.comparison-pair-list { list-style: none; margin: 0; padding: 0; }
+.comparison-pair-list li { position: absolute; display: flex; flex-direction: column; align-items: center; min-width: 92px; transform: translateX(-50%); font-size: 16px; line-height: 1.25; text-align: center; white-space: nowrap; }
+.comparison-pair-list strong { font-weight: 600; }
+.comparison-sentence, .comparison-reference { position: absolute; margin: 0; font-size: 16px; line-height: 1.35; text-align: center; }
+.comparison-reference { color: #c3d2de; font-size: 14px; }
+.comparison-reference[data-shown="false"] { visibility: hidden; }
+.comparison-pair[data-compact="true"][data-reference="true"] .comparison-sentence { visibility: hidden; }
+@media (max-width: 700px), (max-height: 600px) {
+ .comparison-pair-list li { font-size: 14px; }
+ .comparison-sentence { font-size: 14px; }
+ .comparison-reference { font-size: 13px; }
+}
