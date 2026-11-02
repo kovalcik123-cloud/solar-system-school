@@ -354,15 +354,16 @@ window.Learn = (() => {
   }
   // Configured reveal (Phase 6G.4.2): one primary button toggles between the start pair and the revealed pair. The stage
   // state is the only record of which pair is shown; while it moves, the button keeps its label and is aria-disabled.
+  // A busy stage is always moving between the two pairs, so the panel describes the pair it is leaving until the move
+  // ends; this also holds for a panel rebuilt mid-transition (for example after a responsive layout change).
   function syncReveal(state) {
-    const ui = experimentUI, { start, reveal, show, back, intro } = ui.reveal, shown = state.pair && samePair(state.pair, reveal) ? reveal : start;
+    const ui = experimentUI, { start, reveal, show, back, intro } = ui.reveal, target = state.pair && samePair(state.pair, reveal) ? reveal : start;
+    const shown = state.busy ? (target === reveal ? start : reveal) : target;
     const [big, small] = shown.map(id => adapter.bodyInfo(id).name), count = Math.round(SizeData.ratio(...shown));
     setAvailability(ui.primary, !state.active, state.busy); ui.back.hidden = true;
-    if (!state.busy || !ui.primary.textContent) {
-      const revealed = shown === reveal;
-      ui.primary.textContent = revealed ? back : show;
-      ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : revealed ? `${big} má približne ${count}-krát väčší priemer ako ${small}.` : intro;
-    }
+    const revealed = shown === reveal;
+    ui.primary.textContent = revealed ? back : show;
+    ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : revealed ? `${big} má približne ${count}-krát väčší priemer ako ${small}.` : intro;
     if (comparisonPending && state.active && !state.busy) {
       comparisonPending = false;
       announce(`${big} má približne ${TIMES[count] ?? `${count}-krát`} väčší priemer ako ${small}. Porovnávame priemery, nie objemy.`);
