@@ -2112,7 +2112,9 @@
         const comparisonStage = (() => {
             let stage = null, sphere = null, saved = null, notify = null, config = null, frameKey = '', overlay = null;
             let bodies = new Map(), references = [], referenceMaterial = null, transition = null, layouts = null, reveal = null;
-            const FOV = 40, TRANSITION_MS = 700, REVEAL_MS = 600;
+            const FOV = 40, TRANSITION_MS = 700, ZOOM_MS = 1800, REVEAL_MS = 600;
+            // Star comparisons are allowed only where approved (sorted body IDs); planet pairs remain free.
+            const STAR_PAIRS = Object.freeze(['jupiter,sun']);
             // The eight planets, largest to smallest.
             const LINEUP = Object.freeze(['jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'venus', 'mars', 'mercury']);
             // Built once and kept: the scene, both cameras, lights and one unit sphere shared by every comparison body.
@@ -2214,17 +2216,20 @@
                 const [big, small] = pair.map(id => SizeData.bodies[id].name), ratio = SizeData.ratio(pair[0], pair[1]);
                 box.querySelector('.comparison-sentence').textContent = `${big} má približne ${Math.round(ratio)}-krát väčší priemer ako ${small}.`;
                 const caption = box.querySelector('.comparison-reference');
-                caption.textContent = `${Math.round(ratio)} Zemí vedľa seba je takmer presne také široké ako ${big}.`;
+                // Only an Earth reference row has a caption; other pairs leave it empty.
+                caption.textContent = pair[1] === 'earth' ? `${Math.round(ratio)} Zemí vedľa seba je takmer presne také široké ako ${big}.` : '';
                 caption.dataset.shown = String(!!reference); box.dataset.reference = String(!!reference);
             }
-            // Validated, normalised configuration (or null): a single body, the lineup, or a pair of different planets,
-            // larger first. The Earth reference row needs Earth as the smaller body and at least five Earths ("Zemí").
+            // Validated, normalised configuration (or null): a single body, the lineup, or a pair of different planets (or an
+            // approved star pair), larger first. The Earth reference row needs Earth as the smaller body and at least five
+            // Earths ("Zemí").
             function normalise(next) {
                 if (!next) return null;
                 if (next.lineup !== undefined) return next.lineup === 'planets' && next.pair === undefined && next.body === undefined ? { lineup: 'planets' } : null;
                 if (next.pair !== undefined) {
                     const pair = next.pair;
-                    if (!Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] || !pair.every(id => LINEUP.includes(id))) return null;
+                    if (!Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1]) return null;
+                    if (!pair.every(id => LINEUP.includes(id)) && !STAR_PAIRS.includes([...pair].sort().join())) return null;
                     const ordered = [...pair].sort((a, b) => SizeData.bodies[b].diameterKm - SizeData.bodies[a].diameterKm);
                     const reference = next.reference === true;
                     if (next.reference !== undefined && typeof next.reference !== 'boolean') return null;
@@ -2243,11 +2248,14 @@
                 config = Object.freeze(target.pair ? { ...target, pair: Object.freeze(target.pair) } : target);
                 if (config.pair) fillPair(config.pair, config.reference);
                 const samePair = previous?.pair && config.pair && previous.pair.join() === config.pair.join();
-                // Animated only between the lineup and a pair (both orthographic) and without reduced motion.
+                // Animated only between orthographic views (lineup, pairs) and without reduced motion. Two pairs sharing one
+                // body change the viewing scale (zoom); everything else blends layouts.
                 const animate = orthographic(previous) && orthographic(config) && !samePair && !reducedCameraMotion.matches;
+                const shared = previous?.pair && config.pair ? previous.pair.filter(id => config.pair.includes(id)) : [];
                 if (animate) {
                     needed(config).forEach(id => { if (!bodies.has(id)) fade(ensure(id), 0); }); // Arriving bodies fade in.
-                    transition = { from: previous, start: performance.now() };
+                    // The transition starts from the layout on screen (the new pair's labels must not move the start).
+                    transition = { from: previous, start: performance.now(), zoom: shared.length === 1 ? shared[0] : null, fromLayout: layouts?.to ?? null, fromKey: frameKey };
                     setReferences(0);
                 } else {
                     [...bodies.keys()].filter(id => !needed(config).includes(id)).forEach(remove);
@@ -2385,20 +2393,21 @@
                         const camera = stage.lineupCamera;
                         camera.left = 0; camera.right = innerWidth; camera.top = 0; camera.bottom = -innerHeight; camera.updateProjectionMatrix();
                         // The target layout last, so its labels stay positioned for when they are shown.
-                        const from = transition ? layoutFor(transition.from, box) : null;
+                        const from = !transition ? null : transition.fromLayout && transition.fromKey === key ? transition.fromLayout : layoutFor(transition.from, box);
                         layouts = { from, to: layoutFor(config, box) };
                     }
                 }
                 if (!orthographic(config)) { const mesh = bodies.get(config.body); mesh.position.set(0, 0, 0); mesh.scale.setScalar(1); return; }
                 let t = 1;
                 if (transition) {
-                    const linear = Math.min(1, Math.max(0, (now - transition.start) / TRANSITION_MS));
+                    const linear = Math.min(1, Math.max(0, (now - transition.start) / (transition.zoom ? ZOOM_MS : TRANSITION_MS)));
                     t = linear * linear * (3 - 2 * linear);
                     if (linear === 1) { finish(); return frame(now); }
                 }
                 const { from, to } = layouts;
-                const scale = from && transition ? from.scale + (to.scale - from.scale) * t : to.scale;
-                bodies.forEach((mesh, id) => {
+                let scale = from && transition ? from.scale + (to.scale - from.scale) * t : to.scale;
+                if (transition?.zoom) scale = zoom(from, to, t);
+                else bodies.forEach((mesh, id) => {
                     const a = from && transition ? from.bodies.get(id) : null, b = to.bodies.get(id);
                     const start = a || b, end = b || a, km = SizeData.bodies[id].diameterKm / 2;
                     const x = start.x + (end.x - start.x) * t, y = start.y + (end.y - start.y) * t, r = scale * km;
@@ -2408,6 +2417,7 @@
                 });
                 // Reference centres sit on the larger body's equator (y is the screen y of that centre line).
                 (to.references || []).forEach((ref, i) => { if (references[i]) { references[i].scale.setScalar(ref.r); references[i].position.set(ref.x, -ref.y, ref.z); } });
+                fitDepth();
                 if (reveal !== null) {
                     const elapsed = now - reveal;
                     references.forEach((mesh, i) => { mesh.visible = elapsed >= i * REVEAL_MS / references.length; });
@@ -2415,6 +2425,34 @@
                 }
                 overlay.dataset.view = transition ? 'moving' : config.lineup ? 'lineup' : 'pair';
                 overlay.dataset.scale = String(scale);
+            }
+            // Shared-body zoom: both layouts are views of one physical arrangement in km (the shared body at 0, the others
+            // where their own layout put them, all on one baseline). Only the view changes: a geometric scale, so the zoom
+            // feels steady, with the view offset and baseline eased along. Every body uses the same scale on every frame,
+            // and both ends reproduce the rest layouts exactly. Smaller bodies than the shared one fade; larger ones stay
+            // opaque and enter or leave the frame like real objects.
+            function zoom(from, to, t) {
+                const id = transition.zoom, a = from.bodies.get(id), b = to.bodies.get(id), shared = SizeData.bodies[id].diameterKm;
+                const scale = from.scale * Math.pow(to.scale / from.scale, t);
+                const x0 = a.x + (b.x - a.x) * t, baseline = a.y + (b.y - a.y) * t;
+                bodies.forEach((mesh, body) => {
+                    const [layout, anchor] = to.bodies.get(body) ? [to, b] : [from, a], place = layout.bodies.get(body);
+                    const km = (place.x - anchor.x) / layout.scale, r = scale * SizeData.bodies[body].diameterKm / 2;
+                    mesh.scale.setScalar(r); mesh.position.set(x0 + scale * km, -(baseline - r), 0);
+                    const smaller = SizeData.bodies[body].diameterKm < shared;
+                    fade(mesh, !smaller ? 1 : !to.bodies.get(body) ? Math.max(0, 1 - t / 0.5) : !from.bodies.get(body) ? Math.max(0, (t - 0.5) / 0.5) : 1);
+                });
+                return scale;
+            }
+            // The orthographic camera does not change sizes with distance, so its depth simply follows the largest sphere
+            // (a Sun drawn thousands of pixels wide during a zoom never reaches the near plane).
+            function fitDepth() {
+                const camera = stage.lineupCamera;
+                let largest = 0;
+                bodies.forEach(mesh => { largest = Math.max(largest, mesh.scale.x); });
+                references.forEach(mesh => { largest = Math.max(largest, Math.abs(mesh.position.z) + mesh.scale.x); });
+                const z = Math.max(2000, largest * 1.5 + 100), far = z + largest + 100;
+                if (camera.position.z !== z || camera.far !== far) { camera.position.z = z; camera.far = far; camera.updateProjectionMatrix(); }
             }
             function state() {
                 if (!saved) return { active: false, busy: false };
