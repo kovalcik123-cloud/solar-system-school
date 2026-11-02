@@ -2106,24 +2106,34 @@
             return { begin, end, advance, reset, update, state, get active() { return !!saved; } };
         })();
 
-        // Learn-only size-comparison stage (Phase 6G): its own scene, camera, lights and objects, drawn by the shared
+        // Learn-only size-comparison stage (Phase 6G): its own scene, cameras, lights and objects, drawn by the shared
         // renderer instead of the Solar System while active. Real sizes come from SizeData; the Solar System's
         // illustrative meshes are never touched. Textures already loaded for the planets are shared, never disposed.
         const comparisonStage = (() => {
-            let stage = null, sphere = null, saved = null, notify = null, config = null, objects = [], frameKey = '';
+            let stage = null, sphere = null, saved = null, notify = null, config = null, objects = [], frameKey = '', overlay = null;
             const FOV = 40;
-            // Built once and kept: the scene, camera, lights and one unit sphere shared by every comparison body.
+            // The eight planets, largest to smallest.
+            const LINEUP = Object.freeze(['jupiter', 'saturn', 'uranus', 'neptune', 'earth', 'venus', 'mars', 'mercury']);
+            // Built once and kept: the scene, both cameras, lights and one unit sphere shared by every comparison body.
             function build() {
                 if (stage) return;
                 const stageScene = new THREE.Scene();
                 stageScene.background = new THREE.Color(0x000005);
                 const stageCamera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 0.01, 100);
                 stageCamera.position.set(0, 0, 10);
-                // Front lighting keeps every body's full outline visible; a soft key light keeps them round.
-                const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(-3, 2, 6);
-                stageScene.add(new THREE.AmbientLight(0xffffff, 0.55), key);
-                stage = { scene: stageScene, camera: stageCamera };
+                // The lineup is drawn in CSS pixels by an orthographic camera: every disc keeps its exact relative size
+                // anywhere on screen (a perspective camera enlarges off-centre spheres slightly).
+                const lineupCamera = new THREE.OrthographicCamera(0, 1, 0, -1, 1, 4000);
+                lineupCamera.position.set(0, 0, 2000);
+                // Soft front lighting keeps every outline visible without washing out bright textures such as Jupiter.
+                const key = new THREE.DirectionalLight(0xffffff, 0.7); key.position.set(-3, 2, 6);
+                stageScene.add(new THREE.AmbientLight(0xffffff, 0.38), key);
+                stage = { scene: stageScene, camera: stageCamera, lineupCamera };
                 sphere = new THREE.SphereGeometry(1, 64, 64);
+                // Names, diameters and a short note as HTML, so the comparison never depends on the spheres alone.
+                overlay = document.createElement('section'); overlay.id = 'comparison-overlay'; overlay.hidden = true;
+                overlay.setAttribute('aria-label', 'Porovnanie skutočných veľkostí planét');
+                document.body.append(overlay);
             }
             // The texture the Solar System already loaded for a body (null while loading: plain colour instead).
             function sharedMap(id) {
@@ -2131,24 +2141,47 @@
                 if (!mesh) return null;
                 return mesh.material.isShaderMaterial ? mesh.material.uniforms.dayMap?.value ?? null : mesh.material.map ?? null;
             }
+            function addBody(id) {
+                const map = sharedMap(id);
+                const material = id === 'sun' ? new THREE.MeshBasicMaterial({ color: 0xffffff, map })
+                    : new THREE.MeshStandardMaterial({ color: map ? 0xffffff : 0x9aa6b2, map, roughness: 1, metalness: 0 });
+                const mesh = new THREE.Mesh(sphere, material);
+                mesh.name = `comparison-${id}`; mesh.userData.id = id;
+                stage.scene.add(mesh); objects.push(mesh);
+            }
             function clear() {
                 objects.forEach(object => { stage.scene.remove(object); object.material.dispose(); }); // Geometry and maps are shared.
                 objects = [];
+                if (overlay) { overlay.hidden = true; overlay.replaceChildren(); delete overlay.dataset.mode; }
+            }
+            const km = value => `${String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} km`;
+            function buildOverlay() {
+                const list = document.createElement('ol'); list.className = 'comparison-list';
+                const markers = document.createElement('div'); markers.className = 'comparison-markers'; markers.setAttribute('aria-hidden', 'true');
+                LINEUP.forEach((id, index) => {
+                    const item = document.createElement('li'), name = document.createElement('strong'), size = document.createElement('span');
+                    name.textContent = SizeData.bodies[id].name;
+                    const word = document.createElement('span'); word.className = 'comparison-word'; word.textContent = 'priemer ';
+                    size.className = 'comparison-size'; size.append(word, km(SizeData.bodies[id].diameterKm));
+                    const number = document.createElement('span'); number.className = 'comparison-number'; number.textContent = index + 1; number.setAttribute('aria-hidden', 'true');
+                    item.append(number, name, size); item.dataset.body = id; list.append(item);
+                    const marker = document.createElement('span'); marker.textContent = index + 1; marker.dataset.body = id; markers.append(marker);
+                });
+                const note = document.createElement('p'); note.className = 'comparison-note';
+                note.textContent = 'Priemery planét sú v skutočnom pomere, medzery medzi nimi sú len ilustračné. Saturn je bez prstencov.';
+                overlay.append(list, markers, note);
             }
             function configure(next) {
-                if (!saved || !next || !SizeData.has(next.body) || !hasLearnBody(next.body)) return false;
-                clear(); config = Object.freeze({ body: next.body });
-                const map = sharedMap(config.body);
-                const material = config.body === 'sun' ? new THREE.MeshBasicMaterial({ color: 0xffffff, map })
-                    : new THREE.MeshStandardMaterial({ color: map ? 0xffffff : 0x9aa6b2, map, roughness: 1, metalness: 0 });
-                const mesh = new THREE.Mesh(sphere, material);
-                mesh.name = `comparison-${config.body}`;
-                stage.scene.add(mesh); objects.push(mesh);
+                if (!saved || !next) return false;
+                const lineup = next.lineup === 'planets';
+                if (!lineup && (!SizeData.has(next.body) || !hasLearnBody(next.body))) return false;
+                clear(); config = Object.freeze(lineup ? { lineup: 'planets' } : { body: next.body });
+                if (lineup) { LINEUP.forEach(addBody); buildOverlay(); overlay.hidden = false; } else addBody(config.body);
                 frameKey = ''; publish();
                 return true;
             }
             // Usable area between the planet bar and the Learn panel or toolbar, as for the Solar System framing.
-            function frame() {
+            function area() {
                 const nav = document.getElementById('planet-nav').getBoundingClientRect();
                 const panel = document.getElementById('learn-root'), rect = panel.getBoundingClientRect();
                 const sheet = matchMedia('(max-width: 900px)').matches && panel.dataset.layout !== 'side';
@@ -2156,21 +2189,77 @@
                 const left = mobileInfoLayout.matches ? 12 : document.getElementById('side-ui').getBoundingClientRect().right + 20;
                 const right = visible && !sheet ? rect.left - 20 : innerWidth - 20;
                 const top = nav.bottom + 12, bottom = visible && sheet ? rect.top - 12 : innerHeight - 16;
-                const key = [innerWidth, innerHeight, left, right, top, bottom].map(Math.round).join();
+                return { left, top, width: Math.max(60, right - left), height: Math.max(60, bottom - top) };
+            }
+            function frame() {
+                const box = area();
+                const key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join();
                 if (key === frameKey) return;
                 frameKey = key;
-                const width = Math.max(60, right - left), height = Math.max(60, bottom - top), camera = stage.camera;
+                if (config.lineup) { frameLineup(box); return; }
+                const camera = stage.camera;
                 camera.aspect = innerWidth / innerHeight;
                 const tangent = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-                const fit = Math.min(tangent * height / innerHeight, tangent * camera.aspect * width / innerWidth) * 0.8;
+                const fit = Math.min(tangent * box.height / innerHeight, tangent * camera.aspect * box.width / innerWidth) * 0.8;
                 const distance = 1 / Math.sin(Math.atan(fit)); // The unit sphere fills 80 % of the usable area.
                 camera.position.set(0, 0, distance); camera.lookAt(0, 0, 0);
                 camera.near = distance * 0.05; camera.far = distance * 4;
-                camera.setViewOffset(innerWidth, innerHeight, innerWidth / 2 - (left + width / 2), innerHeight / 2 - (top + height / 2), innerWidth, innerHeight);
+                camera.setViewOffset(innerWidth, innerHeight, innerWidth / 2 - (box.left + box.width / 2), innerHeight / 2 - (box.top + box.height / 2), innerWidth, innerHeight);
                 camera.updateProjectionMatrix();
             }
+            // One scale (pixels per km) for all eight planets on a shared baseline. Spacing is presentational: wide enough
+            // that labels never overlap, so small planets keep their true size instead of being enlarged.
+            function frameLineup(box) {
+                const radii = LINEUP.map(id => SizeData.bodies[id].diameterKm / 2);
+                const width = box.width * 0.96;
+                // Centre-to-centre distance: touching discs plus a gap, but never closer than the labels need.
+                const step = (s, i, plan) => Math.max(s * (radii[i - 1] + radii[i]) + plan.gap, plan.minCenter);
+                function layout(minCenter, gap, reserved) {
+                    const plan = { minCenter, gap };
+                    const total = s => s * radii[0] + radii.slice(1).reduce((sum, r, j) => sum + step(s, j + 1, plan), 0) + s * radii[radii.length - 1];
+                    // The largest scale whose lineup fits the width (and Jupiter the height): total() grows with the scale.
+                    let low = 0, high = Math.max(0, (box.height - reserved) / (2 * radii[0]));
+                    for (let i = 0; i < 40; i++) { const mid = (low + high) / 2; if (total(mid) <= width) low = mid; else high = mid; }
+                    return { ...plan, scale: low, total: total(low) };
+                }
+                // Three presentations; each keeps the true scale. Names in one row where they fit; otherwise names in two
+                // staggered rows, or numbers with the list as a legend when that leaves a clearly larger lineup.
+                const note = overlay.querySelector('.comparison-note'), list = overlay.querySelector('.comparison-list');
+                note.style.width = list.style.width = `${box.width}px`;
+                // Label sizes come from the rendered text (learn.css), so spacing follows the typography.
+                overlay.dataset.mode = 'names';
+                const labels = [...list.children], slot = Math.max(...labels.map(l => l.offsetWidth)) + 6, row = Math.max(...labels.map(l => l.offsetHeight)) + 6;
+                const plans = [{ mode: 'names', rows: 1, minCenter: slot, reserved: row + note.offsetHeight + 12 }, { mode: 'names', rows: 2, minCenter: Math.ceil(slot / 2) + 2, reserved: 2 * row + note.offsetHeight + 12 }];
+                overlay.dataset.mode = 'numbers';
+                const markers = overlay.querySelector('.comparison-markers'), mark = Math.max(...[...markers.children].map(m => m.offsetHeight)) + 6;
+                plans.push({ mode: 'numbers', rows: 1, minCenter: Math.max(...[...markers.children].map(m => m.offsetWidth)) + 10, reserved: mark + list.offsetHeight + note.offsetHeight + 16 });
+                const [one, two, numbers] = plans.map(p => ({ ...p, ...layout(p.minCenter, p.mode === 'numbers' ? 6 : 12, p.reserved) }));
+                const size = p => p.scale * 2 * radii[0];
+                // Names beside the planets read best (e.g. on a classroom board): kept unless numbers give a clearly larger lineup.
+                const plan = size(one) >= 110 ? one : size(two) >= 110 && size(two) >= size(numbers) * 0.8 ? two : numbers;
+                overlay.dataset.mode = plan.mode; overlay.dataset.rows = String(plan.rows);
+                const reserved = plan.reserved;
+                const s = plan.scale, block = 2 * radii[0] * s + reserved;
+                const baseline = box.top + Math.max(0, (box.height - block) / 2) + 2 * radii[0] * s;
+                const centers = [];
+                let cx = box.left + (box.width - plan.total) / 2 + s * radii[0];
+                radii.forEach((r, i) => { if (i) cx += step(s, i, plan); centers.push(cx); });
+                objects.forEach((mesh, i) => { mesh.scale.setScalar(s * radii[i]); mesh.position.set(centers[i], -(baseline - s * radii[i]), 0); });
+                const camera = stage.lineupCamera;
+                camera.left = 0; camera.right = innerWidth; camera.top = 0; camera.bottom = -innerHeight; camera.updateProjectionMatrix();
+                // Labels or numbers just below the shared baseline; the legend and note below them.
+                // With two rows, every second label sits one row lower, so neighbours never share a row.
+                const place = (element, cx, i) => { element.style.left = `${cx}px`; element.style.top = `${baseline + 6 + (plan.rows === 2 && i % 2 ? row : 0)}px`; };
+                [...list.children].forEach((item, i) => { if (plan.mode === 'names') place(item, centers[i], i); else item.removeAttribute('style'); });
+                [...overlay.querySelector('.comparison-markers').children].forEach((marker, i) => place(marker, centers[i], 0));
+                const below = baseline + (plan.mode === 'names' ? row * plan.rows + 4 : mark);
+                if (plan.mode === 'numbers') { list.style.left = `${box.left}px`; list.style.top = `${below}px`; }
+                else list.removeAttribute('style');
+                note.style.left = `${box.left}px`; note.style.top = `${plan.mode === 'numbers' ? below + list.offsetHeight + 6 : below}px`;
+                overlay.dataset.scale = String(s);
+            }
             function state() {
-                return saved ? { active: true, busy: false, body: config?.body ?? null } : { active: false, busy: false };
+                return saved ? { active: true, busy: false, body: config?.body ?? null, lineup: config?.lineup ?? null } : { active: false, busy: false };
             }
             function publish() { if (notify) notify(); }
             function begin(next, onChange) {
@@ -2202,7 +2291,7 @@
             function render() {
                 if (!saved) return false;
                 frame();
-                renderer.render(stage.scene, stage.camera);
+                renderer.render(stage.scene, config.lineup ? stage.lineupCamera : stage.camera);
                 return true;
             }
             return { begin, configure, end, update, render, state, get active() { return !!saved; } };
