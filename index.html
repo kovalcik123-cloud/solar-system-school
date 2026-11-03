@@ -2287,7 +2287,20 @@
                 const pairList = document.createElement('ul'); pairList.className = 'comparison-pair-list';
                 const sentence = document.createElement('p'); sentence.className = 'comparison-sentence';
                 const reference = document.createElement('p'); reference.className = 'comparison-reference';
-                pair.append(pairList, sentence, reference);
+                // Edge-aligned star pairs (Phase 6G.5.2): a thin symbolic ring at the true-scale Sun's centre, never its size,
+                // and a short explanation (shown beside the Sun where it fits, otherwise kept for screen readers only).
+                const marker = document.createElement('div'); marker.className = 'comparison-sun-marker'; marker.hidden = true;
+                marker.setAttribute('aria-hidden', 'true');
+                Object.assign(marker.style, { position: 'absolute', boxSizing: 'border-box', border: '1.5px solid #8bd8ff', borderRadius: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none' });
+                const markerNote = document.createElement('p'); markerNote.className = 'comparison-marker-note'; markerNote.hidden = true;
+                const hint = document.createElement('span'); hint.className = 'comparison-word';
+                hint.textContent = ' Slnko leží tesne pri pravom okraji Betelgeuze a pri tejto mierke je prakticky neviditeľné.';
+                // Narrow screens show a short caption instead (hidden from screen readers, which keep the full sentence).
+                const full = document.createElement('span'); full.className = 'comparison-marker-full'; full.textContent = 'Značka ukazuje polohu Slnka, nie jeho skutočnú veľkosť.';
+                const short = document.createElement('span'); short.className = 'comparison-marker-short'; short.textContent = 'Značka = poloha, nie veľkosť';
+                short.setAttribute('aria-hidden', 'true'); short.hidden = true;
+                markerNote.append(full, short, hint);
+                pair.append(pairList, sentence, reference, marker, markerNote);
                 overlay.append(list, markers, note, pair);
             }
             // Pair texts from SizeData: the larger body first, e.g. "Jupiter má približne 11-krát väčší priemer ako Zem."
@@ -2303,6 +2316,8 @@
                 // Only an Earth reference row has a caption; other pairs leave it empty.
                 caption.textContent = pair[1] === 'earth' ? `${Math.round(ratio)} Zemí vedľa seba je takmer presne také široké ako ${big}.` : '';
                 caption.dataset.shown = String(!!reference); box.dataset.reference = String(!!reference);
+                const edge = !!starPair(pair)?.edge;
+                box.querySelector('.comparison-sun-marker').hidden = !edge; box.querySelector('.comparison-marker-note').hidden = !edge;
             }
             // Validated, normalised configuration (or null): a single body, the lineup, or a pair of different planets (or an
             // approved star pair), larger first. The Earth reference row needs Earth as the smaller body and at least five
@@ -2479,14 +2494,44 @@
                 const [bigLabel, smallLabel] = list.children;
                 Object.assign(smallLabel.style, { transform: 'translateY(-50%)', alignItems: 'flex-start', textAlign: 'left', minWidth: '0' });
                 const [big, small] = pair.map(id => SizeData.bodies[id].diameterKm / 2), gap = edge * 2 * small;
-                const row = bigLabel.offsetHeight + 8, side = smallLabel.offsetWidth + 12, reserved = row + sentence.offsetHeight + 14;
+                // The smaller star's label keeps clear of the position marker (ring radius + 6 px).
+                const ring = box.width < 560 ? 20 : 26, clear = ring / 2 + 6;
+                const row = bigLabel.offsetHeight + 8, side = smallLabel.offsetWidth + clear, reserved = row + sentence.offsetHeight + 14;
                 const span = 2 * big + gap + 2 * small;
                 const s = Math.max(0, Math.min((box.height - reserved) / (2 * big), (box.width * 0.94 - side) / span));
                 const left = box.left + Math.max(0, (box.width - s * span - side) / 2);
                 const cy = box.top + Math.max(0, (box.height - 2 * s * big - reserved) / 2) + s * big;
                 const bx = left + s * big, sx = left + s * (2 * big + gap + small);
                 bigLabel.style.left = `${bx}px`; bigLabel.style.top = `${cy + s * big + 8}px`;
-                smallLabel.style.left = `${sx + s * small + 12}px`; smallLabel.style.top = `${cy}px`;
+                smallLabel.style.left = `${sx + s * small + clear}px`; smallLabel.style.top = `${cy}px`;
+                // The marker sits on the true-scale Sun's centre, the same coordinates its mesh uses. The note goes below the
+                // label when it fits beside the larger star and inside the area; otherwise it is kept for screen readers only.
+                const marker = group.querySelector('.comparison-sun-marker'), note = group.querySelector('.comparison-marker-note');
+                Object.assign(marker.style, { left: `${sx}px`, top: `${cy}px`, width: `${ring}px`, height: `${ring}px` });
+                const noteLeft = sx + s * small + clear, noteWidth = Math.min(220, box.left + box.width - noteLeft);
+                Object.assign(note.style, { position: 'absolute', margin: '0', left: `${noteLeft}px`, width: `${Math.max(1, noteWidth)}px`, height: 'auto', overflow: 'visible', clipPath: 'none',
+                    whiteSpace: 'normal', fontSize: '13px', lineHeight: '1.35', color: '#c3d2de', textAlign: 'left' });
+                const full = note.querySelector('.comparison-marker-full'), short = note.querySelector('.comparison-marker-short');
+                full.className = 'comparison-marker-full'; short.hidden = true;
+                const noteTop = cy + smallLabel.offsetHeight / 2 + 6, fits = noteWidth >= 96 && noteTop + note.offsetHeight <= Math.min(cy + s * big, box.top + box.height);
+                if (fits) note.style.top = `${noteTop}px`;
+                else {
+                    // Short caption "Značka = poloha, nie veľkosť" below the label (or above it), clear of the larger star's
+                    // label, the sentence and the area edges; the full sentence stays for screen readers.
+                    full.className = 'comparison-marker-full comparison-word'; short.hidden = false;
+                    Object.assign(note.style, { width: `${Math.max(1, box.left + box.width - noteLeft)}px`, fontSize: '12px', lineHeight: '1.3', color: '#8bd8ff' });
+                    const h = note.offsetHeight, w = Math.min(note.offsetWidth, short.offsetWidth + 1), sentenceTop = cy + s * big + row + 4;
+                    const blocked = [{ left: bx - bigLabel.offsetWidth / 2, right: bx + bigLabel.offsetWidth / 2, top: cy + s * big + 8, bottom: cy + s * big + 8 + bigLabel.offsetHeight },
+                        { left: box.left, right: box.left + box.width, top: sentenceTop, bottom: sentenceTop + sentence.offsetHeight }];
+                    const free = t => t >= box.top && t + h <= box.top + box.height && noteLeft + w <= box.left + box.width + 0.5
+                        && blocked.every(r => noteLeft + w <= r.left || noteLeft >= r.right || t + h <= r.top || t >= r.bottom);
+                    const top = [noteTop, cy - smallLabel.offsetHeight / 2 - 6 - h].find(free);
+                    if (top !== undefined) note.style.top = `${top}px`;
+                    else {
+                        full.className = 'comparison-marker-full'; short.hidden = true;
+                        Object.assign(note.style, { left: `${box.left}px`, top: `${box.top}px`, width: '1px', height: '1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap' });
+                    }
+                }
                 sentence.style.left = caption.style.left = `${box.left}px`;
                 sentence.style.top = caption.style.top = `${cy + s * big + row + 4}px`;
                 return { scale: s, bodies: new Map([[pair[0], { x: bx, y: cy + s * big, r: s * big }], [pair[1], { x: sx, y: cy + s * small, r: s * small }]]), references: [] };
