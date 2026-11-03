@@ -31,9 +31,18 @@ window.Learn = (() => {
   const COMPARISON_PAIR = Object.freeze(['jupiter', 'earth']);
   // Approved configured comparisons (Phase 6G.4.2): a lesson may start at one pair and reveal the next. Only these exact
   // start → reveal combinations are accepted, so content cannot ask the stage for an unapproved star comparison.
+  // An entry may give its own result sentence, announcements and an explanation shown after the reveal (Phase 6G.5.3:
+  // Betelgeuse is an estimate, so its texts are written out and rounded instead of derived from the exact model ratio).
   const REVEALS = Object.freeze([Object.freeze({
     start: Object.freeze(['jupiter', 'earth']), reveal: Object.freeze(['sun', 'jupiter']), show: 'Odhaľ veľkosť Slnka', back: 'Späť k Jupiteru',
     intro: 'Jupiter je najväčšia planéta našej slnečnej sústavy. Ale aký veľký je v porovnaní so Slnkom?'
+  }), Object.freeze({
+    start: Object.freeze(['sun', 'jupiter']), reveal: Object.freeze(['betelgeuse', 'sun']), show: 'Odhaľ Betelgeuze', back: 'Späť k Slnku',
+    intro: 'Už vieš, že Slnko je približne 10-krát širšie ako Jupiter. Čo sa stane, keď ho porovnáme s obrovskou hviezdou Betelgeuze?',
+    result: 'Betelgeuze má podľa jedného odhadu približne 760-krát väčší priemer ako Slnko.',
+    detail: 'Vedci jej veľkosť odhadujú. Podľa použitého odhadu je jej priemer približne 700 až 900-krát väčší než priemer Slnka.',
+    announceReveal: 'Betelgeuze má podľa jedného odhadu približne 760-krát väčší priemer ako Slnko. Značka označuje skutočnú polohu Slnka, nie jeho veľkosť.',
+    announceBack: 'Opäť vidíš Slnko a Jupiter. Slnko má približne 10-krát väčší priemer ako Jupiter.'
   })]);
   const samePair = (a, b) => Array.isArray(a) && a.length === 2 && a.every(id => typeof id === 'string') && [...a].sort().join() === [...b].sort().join();
   function revealOf(s) {
@@ -357,17 +366,36 @@ window.Learn = (() => {
   // A busy stage is always moving between the two pairs, so the panel describes the pair it is leaving until the move
   // ends; this also holds for a panel rebuilt mid-transition (for example after a responsive layout change).
   function syncReveal(state) {
-    const ui = experimentUI, { start, reveal, show, back, intro } = ui.reveal, target = state.pair && samePair(state.pair, reveal) ? reveal : start;
+    const ui = experimentUI, { start, reveal, show, back, intro, result, announceReveal, announceBack } = ui.reveal;
+    const target = state.pair && samePair(state.pair, reveal) ? reveal : start;
     const shown = state.busy ? (target === reveal ? start : reveal) : target;
-    const [big, small] = shown.map(id => adapter.bodyInfo(id).name), count = Math.round(SizeData.ratio(...shown));
+    // Names from SizeData (it also holds the stars the Solar System scene does not have, such as Betelgeuse).
+    const [big, small] = shown.map(id => SizeData.bodies[id].name), count = Math.round(SizeData.ratio(...shown));
     setAvailability(ui.primary, !state.active, state.busy); ui.back.hidden = true;
+    if (!ui.fitted && ui.info.offsetHeight > 0) fitReveal(ui); // Waits until the panel is laid out.
     const revealed = shown === reveal;
     ui.primary.textContent = revealed ? back : show;
-    ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : revealed ? `${big} má približne ${count}-krát väčší priemer ako ${small}.` : intro;
+    ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : revealed ? result ?? `${big} má približne ${count}-krát väčší priemer ako ${small}.` : intro;
+    // The explanation keeps its place in every state, so the panel never changes height when it appears.
+    if (ui.detail) ui.detail.style.visibility = revealed && state.active ? '' : 'hidden';
     if (comparisonPending && state.active && !state.busy) {
       comparisonPending = false;
-      announce(`${big} má približne ${TIMES[count] ?? `${count}-krát`} väčší priemer ako ${small}. Porovnávame priemery, nie objemy.`);
+      const words = `${big} má približne ${TIMES[count] ?? `${count}-krát`} väčší priemer ako ${small}. Porovnávame priemery, nie objemy.`;
+      announce((revealed ? announceReveal : announceBack) ?? words);
     }
+  }
+  // Once per panel build (Phase 6G.5.3): the explanation line keeps the height of its longer text, so the button does
+  // not move when the text changes; in the short-landscape side panel the action comes first when it would otherwise
+  // fall below the panel's visible area. Both only act when needed.
+  function fitReveal(ui) {
+    ui.fitted = true;
+    const { intro, result } = ui.reveal, before = ui.info.textContent;
+    if (result && ui.info.offsetHeight > 2) {
+      const heights = [intro, result].map(text => { ui.info.textContent = text; return ui.info.offsetHeight; });
+      ui.info.style.minHeight = `${Math.max(...heights)}px`; ui.info.textContent = before;
+    }
+    const actions = ui.primary.parentElement;
+    if (root.dataset.layout === 'side' && !actions.contains(document.activeElement) && ui.primary.getBoundingClientRect().bottom > root.getBoundingClientRect().bottom) ui.info.before(actions);
   }
   // Requests are ignored while the stage moves or reveals, so repeated activation cannot queue extra changes.
   function compare(action) {
@@ -566,6 +594,7 @@ window.Learn = (() => {
         if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
         if (s.text) details.append(el('p', s.text));
         if (s.note) details.append(el('p', s.note, 'learn-note'));
+        if (reveal?.detail) { experimentUI.detail = el('p', reveal.detail, 'learn-note'); details.append(experimentUI.detail); }
         details.append(button('Začať porovnanie odznova', demonstrate));
         body.append(info, note, actions, details);
       }
