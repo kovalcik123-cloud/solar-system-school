@@ -2692,6 +2692,9 @@
             // Orbit view (Phase 6G.5.4): only the orbit group shows in the overlay, and the rings only in this view.
             function overlayMode(orbits) {
                 [...overlay.children].forEach(child => { child.hidden = child.classList.contains('comparison-orbits') ? !orbits : orbits; });
+                // The lineup's label mode (e.g. "numbers" lays its list out as a grid, which would override hidden) is the lineup's
+                // own; the lineup layout sets it again whenever the eight planets return (Phase 6G.6.1a).
+                if (orbits) delete overlay.dataset.mode;
                 if (!orbits && orbitParts) orbitParts.group.visible = false;
             }
             // Thin flat rings (WebGL ignores line widths) for the five orbits and one translucent band for the estimate range,
