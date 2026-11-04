@@ -2113,6 +2113,11 @@
             let stage = null, sphere = null, saved = null, notify = null, config = null, frameKey = '', overlay = null;
             let bodies = new Map(), references = [], referenceMaterial = null, transition = null, layouts = null, reveal = null;
             let starSphere = null, starMap = null; // Betelgeuse only: made on first use, then kept like the shared sphere.
+            // Orbit view (Phase 6G.5.4): rings made on first use and kept; the shown Betelgeuse level (0 or 1) and its fade.
+            let orbitParts = null, orbitLayout = null, orbitLevel = 0, orbitFade = null;
+            const ORBIT_MS = 900, ORBITS = Object.freeze(['mercury', 'venus', 'earth', 'mars', 'jupiter']);
+            // Directions (degrees, counter-clockwise from the right) of the label rays, one per orbit, fanned over the upper right.
+            const ORBIT_ANGLES = Object.freeze([74, 56, 38, 20, 2]);
             const FOV = 40, TRANSITION_MS = 700, ZOOM_MS = 1800, REVEAL_MS = 600;
             // Star comparisons are allowed only where approved (sorted body IDs); planet pairs remain free. An approved pair sets its
             // zoom duration and may use an edge-aligned composition: the smaller star at the larger one's equator, `edge` of its own
@@ -2256,6 +2261,7 @@
             }
             function clear() {
                 [...bodies.keys()].forEach(remove); setReferences(0);
+                orbitFade = null; orbitLevel = 0; orbitLayout = null; if (orbitParts) orbitParts.group.visible = false;
                 transition = null; layouts = null;
                 if (overlay) { overlay.hidden = true; delete overlay.dataset.view; }
             }
@@ -2301,7 +2307,75 @@
                 short.setAttribute('aria-hidden', 'true'); short.hidden = true;
                 markerNote.append(full, short, hint);
                 pair.append(pairList, sentence, reference, marker, markerNote);
-                overlay.append(list, markers, note, pair);
+                overlay.append(list, markers, note, pair, buildOrbitOverlay());
+            }
+            // Orbit view texts (Phase 6G.5.4): tags beside the orbits (aria-hidden; names on wide screens, numbers on narrow
+            // ones), one real-text legend for screen readers and narrow screens, the result sentence and a footnote.
+            const auText = value => `${value.toFixed(2).replace('.', ',')} AU`;
+            function buildOrbitOverlay() {
+                const NS = 'http://www.w3.org/2000/svg', group = document.createElement('div');
+                group.className = 'comparison-orbits'; group.hidden = true;
+                Object.assign(group.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
+                const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('comparison-orbit-leaders');
+                Object.assign(svg.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', overflow: 'visible' });
+                ORBITS.forEach(() => { const line = document.createElementNS(NS, 'line'); line.setAttribute('stroke', 'rgba(205,225,240,0.55)'); line.setAttribute('stroke-width', '1'); svg.append(line); });
+                const tags = document.createElement('div'); tags.className = 'comparison-orbit-tags'; tags.setAttribute('aria-hidden', 'true');
+                ORBITS.forEach((id, i) => {
+                    const tag = document.createElement('div'); tag.dataset.body = id;
+                    Object.assign(tag.style, { position: 'absolute', whiteSpace: 'nowrap', lineHeight: '1.2', textShadow: '0 0 3px #000, 0 0 6px #000' });
+                    const name = document.createElement('strong'), size = document.createElement('span'), number = document.createElement('strong');
+                    name.textContent = SizeData.bodies[id].name; size.textContent = auText(SizeData.orbitsAu[id]); number.textContent = String(i + 1);
+                    name.className = 'orbit-tag-name'; size.className = 'orbit-tag-size'; number.className = 'orbit-tag-number';
+                    Object.assign(name.style, { display: 'block', fontSize: '14px', fontWeight: '600' }); Object.assign(size.style, { display: 'block', fontSize: '12px', color: '#c3d2de' });
+                    Object.assign(number.style, { fontSize: '12px', color: '#b5ebff' });
+                    tag.append(name, size, number); tags.append(tag);
+                });
+                // A small symbol for the Sun's place: position only, never its size.
+                const centre = document.createElement('div'); centre.className = 'comparison-orbit-centre'; centre.setAttribute('aria-hidden', 'true');
+                Object.assign(centre.style, { position: 'absolute', width: '10px', height: '10px', boxSizing: 'border-box', borderRadius: '50%', border: '1.5px solid #fff1c4', transform: 'translate(-50%, -50%)', boxShadow: '0 0 0 1px rgba(0,0,0,0.6)' });
+                const dot = document.createElement('div'); Object.assign(dot.style, { position: 'absolute', left: '50%', top: '50%', width: '3px', height: '3px', borderRadius: '50%', background: '#fff1c4', transform: 'translate(-50%, -50%)' });
+                centre.append(dot);
+                const text = document.createElement('div'); text.className = 'comparison-orbit-text';
+                Object.assign(text.style, { position: 'absolute', color: '#e8f2fa', textAlign: 'left' });
+                const legend = document.createElement('ul'); legend.className = 'comparison-orbit-legend';
+                Object.assign(legend.style, { listStyle: 'none', margin: '0', padding: '0' });
+                ORBITS.forEach((id, i) => {
+                    const item = document.createElement('li'); item.dataset.body = id;
+                    const number = document.createElement('strong'); number.textContent = `${i + 1} `; number.setAttribute('aria-hidden', 'true'); number.style.color = '#b5ebff';
+                    const status = document.createElement('span'); status.className = 'comparison-word orbit-status';
+                    item.append(number, `${SizeData.bodies[id].name} – ${auText(SizeData.orbitsAu[id])}`, status); legend.append(item);
+                });
+                const sun = document.createElement('li'); sun.className = 'orbit-legend-sun';
+                const symbol = centre.cloneNode(true); symbol.removeAttribute('class');
+                Object.assign(symbol.style, { position: 'relative', display: 'inline-block', verticalAlign: '-1px', transform: 'none', marginRight: '6px' });
+                sun.append(symbol, 'Tu je miesto Slnka (značka = poloha, nie veľkosť)'); sun.style.gridColumn = '1 / -1';
+                const star = document.createElement('li'); star.className = 'orbit-legend-star';
+                const swatch = document.createElement('span'); swatch.setAttribute('aria-hidden', 'true');
+                Object.assign(swatch.style, { display: 'inline-block', width: '14px', height: '8px', marginRight: '6px', borderRadius: '2px', background: 'rgba(255,154,74,0.55)', boxShadow: 'inset 0 0 0 1px #d65c22' });
+                const r = SizeData.betelgeuseRadiusAu, one = v => v.toFixed(1).replace('.', ',');
+                star.append(swatch, `Betelgeuze: polomer asi ${one(r.reference)} AU (odhad ${one(r.lower)}–${one(r.upper)} AU)`); star.style.gridColumn = '1 / -1';
+                legend.append(sun, star);
+                const sentence = document.createElement('p'); sentence.className = 'comparison-orbit-sentence'; Object.assign(sentence.style, { margin: '6px 0 0', fontWeight: '600' });
+                const foot = document.createElement('p'); foot.className = 'comparison-orbit-foot'; Object.assign(foot.style, { margin: '6px 0 0', color: '#c3d2de' });
+                const footShort = document.createElement('span'); footShort.className = 'orbit-foot-short'; footShort.setAttribute('aria-hidden', 'true');
+                footShort.textContent = 'Pohľad zhora · stredné vzdialenosti v skutočnom pomere';
+                const footFull = document.createElement('span'); footFull.className = 'orbit-foot-full';
+                footFull.textContent = 'Pohľad zhora. Kruhy ukazujú stredné vzdialenosti planét od Slnka v skutočnom pomere; skutočné dráhy sú mierne eliptické. Je to len porovnanie veľkostí, nie predpoveď, čo by sa s planétami naozaj stalo.';
+                foot.append(footShort, footFull);
+                text.append(legend, sentence, foot);
+                group.append(svg, tags, centre, text);
+                return group;
+            }
+            // Texts of the settled state: before the reveal, or with Betelgeuse (which orbits lie inside its reference radius).
+            const ORBIT_BEFORE = 'Kruhy ukazujú vzdialenosti dráh planét od Slnka v skutočnom pomere.';
+            const ORBIT_AFTER = 'Dráhy Merkúra, Venuše, Zeme a Marsu by boli vnútri Betelgeuze. Dráha Jupitera by zostala mimo nej.';
+            function setOrbitTexts(revealed) {
+                const g = overlay.querySelector('.comparison-orbits');
+                g.querySelector('.comparison-orbit-sentence').textContent = revealed ? ORBIT_AFTER : ORBIT_BEFORE;
+                g.querySelector('.orbit-legend-star').style.visibility = revealed ? '' : 'hidden';
+                g.querySelectorAll('.comparison-orbit-legend li[data-body]').forEach(li => {
+                    li.querySelector('.orbit-status').textContent = !revealed ? '' : SizeData.orbitsAu[li.dataset.body] < SizeData.betelgeuseRadiusAu.reference ? ', vnútri Betelgeuze' : ', mimo Betelgeuze';
+                });
             }
             // Pair texts from SizeData: the larger body first, e.g. "Jupiter má približne 11-krát väčší priemer ako Zem."
             function fillPair(pair, reference) {
@@ -2324,6 +2398,8 @@
             // Earths ("Zemí").
             function normalise(next) {
                 if (!next) return null;
+                // The orbit view (Phase 6G.5.4): only these two settings, nothing else in the object.
+                if (next.orbits !== undefined) return ['sun', 'betelgeuse'].includes(next.orbits) && Object.keys(next).length === 1 ? { orbits: next.orbits } : null;
                 if (next.lineup !== undefined) return next.lineup === 'planets' && next.pair === undefined && next.body === undefined ? { lineup: 'planets' } : null;
                 if (next.pair !== undefined) {
                     const pair = next.pair;
@@ -2337,19 +2413,21 @@
                 }
                 return SizeData.has(next.body) && hasLearnBody(next.body) ? { body: next.body } : null;
             }
-            const orthographic = c => !!(c && (c.lineup || c.pair));
+            const orthographic = c => !!(c && (c.lineup || c.pair || c.orbits));
             function configure(next) {
                 if (!saved) return false;
                 const target = normalise(next);
                 if (!target) return false; // Invalid input leaves the current stage untouched.
                 if (transition) finish(); // A new configuration first completes the running transition.
+                if (orbitFade) { orbitLevel = orbitFade.to; orbitFade = null; }
                 const previous = config;
                 config = Object.freeze(target.pair ? { ...target, pair: Object.freeze(target.pair) } : target);
                 if (config.pair) fillPair(config.pair, config.reference);
                 const samePair = previous?.pair && config.pair && previous.pair.join() === config.pair.join();
                 // Animated only between orthographic views (lineup, pairs) and without reduced motion. Two pairs sharing one
                 // body change the viewing scale (zoom); everything else blends layouts.
-                const animate = orthographic(previous) && orthographic(config) && !samePair && !reducedCameraMotion.matches;
+                // The orbit view is entered and left directly; inside it, Betelgeuse fades in or out (ORBIT_MS) at its true radius.
+                const animate = orthographic(previous) && orthographic(config) && !previous.orbits && !config.orbits && !samePair && !reducedCameraMotion.matches;
                 const shared = previous?.pair && config.pair ? previous.pair.filter(id => config.pair.includes(id)) : [];
                 if (animate) {
                     needed(config).forEach(id => { if (!bodies.has(id)) fade(ensure(id), 0); }); // Arriving bodies fade in.
@@ -2366,11 +2444,16 @@
                     needed(config).forEach(ensure);
                     setReferences(config.reference ? Math.round(SizeData.ratio(config.pair[0], config.pair[1])) : 0);
                 }
+                if (config.orbits) {
+                    const level = config.orbits === 'betelgeuse' ? 1 : 0;
+                    if (previous?.orbits && previous.orbits !== config.orbits && !reducedCameraMotion.matches) orbitFade = { from: orbitLevel, to: level, start: performance.now() };
+                    else { orbitLevel = level; setOrbitTexts(level === 1); }
+                }
                 overlay.hidden = !orthographic(config);
-                frameKey = ''; layouts = null; publish();
+                frameKey = ''; layouts = null; orbitLayout = null; publish();
                 return true;
             }
-            const needed = c => c.lineup ? [...LINEUP] : c.pair ? [...c.pair] : [c.body];
+            const needed = c => c.orbits ? ['betelgeuse'] : c.lineup ? [...LINEUP] : c.pair ? [...c.pair] : [c.body];
             function fade(mesh, opacity) {
                 mesh.material.transparent = opacity < 1; mesh.material.opacity = opacity;
                 mesh.material.depthWrite = opacity >= 1;
@@ -2540,6 +2623,8 @@
             // Places every body for the current frame: at rest at the target layout, during a transition a blend of the
             // previous and target layouts with one interpolated scale (so every ratio stays exact on every frame).
             function frame(now) {
+                if (config.orbits) return frameOrbits(now);
+                overlayMode(false);
                 const box = area();
                 const key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join();
                 if (key !== frameKey || !layouts) {
@@ -2604,6 +2689,109 @@
                 });
                 return scale;
             }
+            // Orbit view (Phase 6G.5.4): only the orbit group shows in the overlay, and the rings only in this view.
+            function overlayMode(orbits) {
+                [...overlay.children].forEach(child => { child.hidden = child.classList.contains('comparison-orbits') ? !orbits : orbits; });
+                if (!orbits && orbitParts) orbitParts.group.visible = false;
+            }
+            // Thin flat rings (WebGL ignores line widths) for the five orbits and one translucent band for the estimate range,
+            // drawn over Betelgeuse; materials made once, geometry rebuilt only when the layout changes.
+            function orbitMeshes() {
+                if (orbitParts) return orbitParts;
+                const group = new THREE.Group(); group.name = 'comparison-orbits';
+                const flat = (color, opacity, order) => { const mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false })); mesh.renderOrder = order; group.add(mesh); return mesh; };
+                const band = flat(0xff9a4a, 0, 2), rings = ORBITS.map(() => flat(0x9cc2e0, 0.9, 3));
+                stage.scene.add(group); group.visible = false;
+                orbitParts = { group, band, rings };
+                return orbitParts;
+            }
+            // One AU-to-pixel scale for every orbit and for Betelgeuse; Jupiter's orbit, the label rays and the text block fit the
+            // area. Wide areas name the orbits at the ray ends (text below); narrow ones number them and use the legend beside or
+            // below the diagram, whichever leaves the larger diagram.
+            function layoutOrbits(box) {
+                const g = overlay.querySelector('.comparison-orbits'), compact = box.width < 560, gap = compact ? 6 : 10;
+                const tags = [...g.querySelectorAll('.comparison-orbit-tags > div')], text = g.querySelector('.comparison-orbit-text');
+                const legendItems = [...g.querySelectorAll('.comparison-orbit-legend li[data-body]')], sentence = g.querySelector('.comparison-orbit-sentence');
+                tags.forEach(tag => { tag.querySelector('.orbit-tag-name').style.display = tag.querySelector('.orbit-tag-size').style.display = compact ? 'none' : 'block'; tag.querySelector('.orbit-tag-number').style.display = compact ? 'inline' : 'none'; });
+                legendItems.forEach(li => { li.classList.toggle('comparison-word', !compact); li.querySelector('strong').hidden = !compact; });
+                // Narrow screens: a compact legend; the result sentence and the full footnote stay for screen readers.
+                sentence.classList.toggle('comparison-word', compact);
+                const legend = g.querySelector('.comparison-orbit-legend');
+                g.querySelector('.orbit-foot-short').hidden = !compact; g.querySelector('.orbit-foot-full').className = compact ? 'orbit-foot-full comparison-word' : 'orbit-foot-full';
+                Object.assign(text.style, { fontSize: compact ? '12px' : '14px', lineHeight: compact ? '1.25' : '1.35' });
+                const sizes = tags.map(tag => ({ w: tag.offsetWidth, h: tag.offsetHeight }));
+                const angles = ORBIT_ANGLES.map(a => a * Math.PI / 180), jupiter = SizeData.orbitsAu.jupiter;
+                // The text block keeps the height of its longer sentence, so revealing never moves the diagram.
+                const measure = (width, columns = 1) => {
+                    text.style.width = `${width}px`; sentence.style.minHeight = '0px';
+                    Object.assign(legend.style, compact ? { display: 'grid', gridTemplateColumns: columns === 1 ? 'minmax(0, 1fr)' : `repeat(${columns}, max-content)`, columnGap: '14px' } : { display: 'block', gridTemplateColumns: '', columnGap: '' });
+                    const before = sentence.textContent, heights = [ORBIT_BEFORE, ORBIT_AFTER].map(t => { sentence.textContent = t; return sentence.offsetHeight; });
+                    sentence.textContent = before; sentence.style.minHeight = `${Math.max(...heights)}px`;
+                    return text.offsetHeight;
+                };
+                const fit = (W, H) => Math.max(10, Math.min(W / 2, H / 2, ...angles.map((a, i) => Math.min((W - sizes[i].w - gap * Math.cos(a)) / (1 + Math.cos(a)), (H - gap * Math.sin(a) - sizes[i].h / 2) / (1 + Math.sin(a))))));
+                const plans = [];
+                const columns = compact ? (box.width >= 330 ? 3 : 2) : 1, belowH = measure(box.width, columns);
+                plans.push({ side: false, region: { left: box.left, top: box.top, width: box.width, height: box.height - belowH - 10 }, width: box.width, columns, textH: belowH });
+                // Beside the diagram: a few column widths, so the legend is as narrow as its height allows.
+                if (compact) for (const share of [0.36, 0.42, 0.48, 0.55]) {
+                    const w = Math.min(210, Math.round(box.width * share)), h = measure(w, 1);
+                    if (h <= box.height) plans.push({ side: true, region: { left: box.left, top: box.top, width: box.width - w - 12, height: box.height }, width: w, columns: 1, textH: h });
+                }
+                plans.forEach(p => { p.R = fit(p.region.width, p.region.height); });
+                const plan = plans.reduce((a, b) => b.R > a.R ? b : a);
+                measure(plan.width, plan.columns);
+                const R = plan.R, s = R / jupiter, ext = { left: R, right: R, top: R, bottom: R };
+                angles.forEach((a, i) => { ext.right = Math.max(ext.right, (R + gap) * Math.cos(a) + sizes[i].w); ext.top = Math.max(ext.top, (R + gap) * Math.sin(a) + sizes[i].h / 2); });
+                const { region } = plan, cx = region.left + Math.max(0, (region.width - ext.left - ext.right) / 2) + ext.left;
+                const cy = region.top + Math.max(0, (region.height - ext.top - ext.bottom) / 2) + ext.top;
+                const radii = ORBITS.map(id => SizeData.orbitsAu[id] * s), lines = [...g.querySelectorAll('.comparison-orbit-leaders line')];
+                tags.forEach((tag, i) => {
+                    const a = angles[i], c = Math.cos(a), sn = Math.sin(a);
+                    tag.style.left = `${cx + (R + gap) * c}px`; tag.style.top = `${cy - (R + gap) * sn - sizes[i].h / 2}px`;
+                    // A leader from the orbit to just outside Jupiter's orbit (none for Jupiter itself).
+                    const inner = i < ORBITS.length - 1;
+                    lines[i].setAttribute('x1', cx + radii[i] * c); lines[i].setAttribute('y1', cy - radii[i] * sn);
+                    lines[i].setAttribute('x2', cx + (inner ? R + gap - 2 : radii[i]) * c); lines[i].setAttribute('y2', cy - (inner ? R + gap - 2 : radii[i]) * sn);
+                });
+                // The Sun symbol stays inside Mercury's orbit (10 px on wide screens, smaller where Mercury's circle is small).
+                const centre = g.querySelector('.comparison-orbit-centre'), mark = Math.max(4, Math.min(10, Math.floor(radii[0] * 2 - 6)));
+                Object.assign(centre.style, { left: `${cx}px`, top: `${cy}px`, width: `${mark}px`, height: `${mark}px`, borderWidth: mark < 8 ? '1px' : '1.5px' });
+                if (plan.side) { text.style.left = `${region.left + region.width + 12}px`; text.style.top = `${box.top + Math.max(0, (box.height - plan.textH) / 2)}px`; }
+                else { text.style.left = `${box.left}px`; text.style.top = `${cy + R + 10}px`; }
+                g.dataset.compact = String(compact); g.dataset.side = String(plan.side);
+                const r = SizeData.betelgeuseRadiusAu;
+                return { cx, cy, s, radii, ring: compact ? 1 : 1.5, star: r.reference * s, band: [r.lower * s, r.upper * s] };
+            }
+            function shapeOrbits(layout) {
+                const parts = orbitMeshes(), { cx, cy, radii, ring, band } = layout;
+                parts.rings.forEach((mesh, i) => { mesh.geometry.dispose(); mesh.geometry = new THREE.RingGeometry(radii[i] - ring / 2, radii[i] + ring / 2, 256); mesh.position.set(cx, -cy, 0); });
+                parts.band.geometry.dispose(); parts.band.geometry = new THREE.RingGeometry(band[0], band[1], 256); parts.band.position.set(cx, -cy, 0);
+            }
+            const ORBIT_COOL = new THREE.Color(0x9cc2e0), ORBIT_WARM = new THREE.Color(0xfff1c8);
+            function frameOrbits(now) {
+                overlayMode(true);
+                const box = area(), key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join();
+                if (key !== frameKey || !orbitLayout) {
+                    frameKey = key;
+                    const camera = stage.lineupCamera;
+                    camera.left = 0; camera.right = innerWidth; camera.top = 0; camera.bottom = -innerHeight; camera.updateProjectionMatrix();
+                    orbitLayout = layoutOrbits(box); shapeOrbits(orbitLayout);
+                }
+                let level = orbitLevel;
+                if (orbitFade) {
+                    const linear = Math.min(1, Math.max(0, (now - orbitFade.start) / ORBIT_MS)), t = linear * linear * (3 - 2 * linear);
+                    level = orbitFade.from + (orbitFade.to - orbitFade.from) * t;
+                    if (linear === 1) { orbitLevel = level = orbitFade.to; orbitFade = null; setOrbitTexts(level === 1); publish(); }
+                }
+                // Betelgeuse always at its true radius on the shared scale; only its opacity changes.
+                const { cx, cy, star } = orbitLayout, mesh = bodies.get('betelgeuse'), parts = orbitMeshes();
+                mesh.position.set(cx, -cy, 0); mesh.scale.setScalar(star); fade(mesh, level); mesh.visible = level > 0.001;
+                parts.group.visible = true; parts.band.material.opacity = 0.32 * level; parts.band.visible = level > 0.001;
+                parts.rings.forEach((ringMesh, i) => { ringMesh.material.color.copy(ORBIT_COOL); if (i < ORBITS.length - 1) ringMesh.material.color.lerp(ORBIT_WARM, level); });
+                fitDepth();
+                overlay.dataset.view = 'orbits';
+            }
             // The orthographic camera does not change sizes with distance, so its depth simply follows the largest sphere
             // (a Sun drawn thousands of pixels wide during a zoom never reaches the near plane).
             function fitDepth() {
@@ -2616,8 +2804,8 @@
             }
             function state() {
                 if (!saved) return { active: false, busy: false };
-                return { active: true, busy: !!transition || reveal !== null, body: config?.body ?? null, lineup: config?.lineup ?? null, pair: config?.pair ? [...config.pair] : null,
-                    reference: !!config?.reference, references: references.length };
+                return { active: true, busy: !!transition || reveal !== null || !!orbitFade, body: config?.body ?? null, lineup: config?.lineup ?? null, pair: config?.pair ? [...config.pair] : null,
+                    reference: !!config?.reference, references: references.length, orbits: config?.orbits ?? null };
             }
             function publish() { if (notify) notify(); }
             function begin(next, onChange) {
