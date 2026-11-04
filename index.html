@@ -2730,16 +2730,25 @@
                     return text.offsetHeight;
                 };
                 const fit = (W, H) => Math.max(10, Math.min(W / 2, H / 2, ...angles.map((a, i) => Math.min((W - sizes[i].w - gap * Math.cos(a)) / (1 + Math.cos(a)), (H - gap * Math.sin(a) - sizes[i].h / 2) / (1 + Math.sin(a))))));
-                const plans = [];
-                const columns = compact ? (box.width >= 330 ? 3 : 2) : 1, belowH = measure(box.width, columns);
-                plans.push({ side: false, region: { left: box.left, top: box.top, width: box.width, height: box.height - belowH - 10 }, width: box.width, columns, textH: belowH });
-                // Beside the diagram: a few column widths, so the legend is as narrow as its height allows.
-                if (compact) for (const share of [0.36, 0.42, 0.48, 0.55]) {
-                    const w = Math.min(210, Math.round(box.width * share)), h = measure(w, 1);
-                    if (h <= box.height) plans.push({ side: true, region: { left: box.left, top: box.top, width: box.width - w - 12, height: box.height }, width: w, columns: 1, textH: h });
-                }
-                plans.forEach(p => { p.R = fit(p.region.width, p.region.height); });
+                const footShort = g.querySelector('.orbit-foot-short'), columns = compact ? (box.width >= 330 ? 3 : 2) : 1;
+                const plansFor = hideFoot => {
+                    footShort.hidden = !compact || hideFoot;
+                    const list = [], belowH = measure(box.width, columns);
+                    if (!hideFoot) list.push({ side: false, region: { left: box.left, top: box.top, width: box.width, height: box.height - belowH - 10 }, width: box.width, columns, textH: belowH, hideFoot });
+                    // Beside the diagram: a few column widths, so the legend is as narrow as its height allows.
+                    if (compact) for (const share of [0.36, 0.42, 0.48, 0.55]) {
+                        const w = Math.min(210, Math.round(box.width * share)), h = measure(w, 1);
+                        if (h <= box.height) list.push({ side: true, region: { left: box.left, top: box.top, width: box.width - w - 12, height: box.height }, width: w, columns: 1, textH: h, hideFoot });
+                    }
+                    list.forEach(p => { p.R = fit(p.region.width, p.region.height); });
+                    return list;
+                };
+                const plans = plansFor(false), best = Math.max(...plans.map(p => p.R));
+                // Short phones (Phase 6G.5.4.2a): if the legend fits beside the diagram only without the short footnote line,
+                // and that gives a clearly larger diagram, the line is left to screen readers (the full footnote stays there).
+                if (compact) plans.push(...plansFor(true).filter(p => p.R > best * 1.15));
                 const plan = plans.reduce((a, b) => b.R > a.R ? b : a);
+                footShort.hidden = !compact || plan.hideFoot;
                 measure(plan.width, plan.columns);
                 const R = plan.R, s = R / jupiter, ext = { left: R, right: R, top: R, bottom: R };
                 angles.forEach((a, i) => { ext.right = Math.max(ext.right, (R + gap) * Math.cos(a) + sizes[i].w); ext.top = Math.max(ext.top, (R + gap) * Math.sin(a) + sizes[i].h / 2); });

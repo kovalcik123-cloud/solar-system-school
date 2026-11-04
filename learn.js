@@ -43,13 +43,28 @@ window.Learn = (() => {
     detail: 'Vedci jej veľkosť odhadujú. Podľa použitého odhadu je jej priemer približne 700 až 900-krát väčší než priemer Slnka.',
     announceReveal: 'Betelgeuze má podľa jedného odhadu približne 760-krát väčší priemer ako Slnko. Značka označuje skutočnú polohu Slnka, nie jeho veľkosť.',
     announceBack: 'Opäť vidíš Slnko a Jupiter. Slnko má približne 10-krát väčší priemer ako Jupiter.'
+  }), Object.freeze({
+    // The orbit view (Phase 6G.5.4.2): start and reveal are stage orbit states, not pairs. The note line stays visible on
+    // every layout (the info line is screen-reader-only on phones), so it carries the question and the short result.
+    kind: 'orbits', start: 'sun', reveal: 'betelgeuse', show: 'Ukáž Betelgeuze', back: 'Skryť Betelgeuze',
+    intro: 'Kruhy ukazujú stredné vzdialenosti dráh planét od Slnka v skutočnom pomere.',
+    result: 'Betelgeuze by siahala asi do 3,6 AU – ďalej ako dráha Marsu, ale nie až k dráhe Jupitera (5,2 AU).',
+    noteBefore: 'Keby bola Betelgeuze na mieste Slnka, kam až by siahala?',
+    noteAfter: 'Merkúr až Mars: vnútri Betelgeuze. Jupiter: mimo.',
+    detail: 'Podľa použitého odhadu by povrch Betelgeuze siahal asi 3,6 AU od stredu (odhad 3,3 až 4,1 AU). Dráhy Merkúra, Venuše, Zeme a Marsu by boli vnútri hviezdy; Jupiter obieha v strednej vzdialenosti asi 5,2 AU, teda mimo nej. Je to len porovnanie veľkostí, nie simulácia toho, čo by sa s planétami naozaj stalo. Kruhy ukazujú zjednodušené stredné vzdialenosti, skutočné dráhy sú mierne eliptické. Veľkosť Betelgeuze je odhad z modelu, nie presné meranie.',
+    announceReveal: 'Dráhy Merkúra, Venuše, Zeme a Marsu by boli vnútri Betelgeuze. Dráha Jupitera by zostala mimo nej.',
+    announceBack: 'Opäť vidíš len dráhy planét okolo Slnka.'
   })]);
   const samePair = (a, b) => Array.isArray(a) && a.length === 2 && a.every(id => typeof id === 'string') && [...a].sort().join() === [...b].sort().join();
   function revealOf(s) {
     const e = s?.experiment;
     if (!sizeComparison(s) || e.start === undefined && e.reveal === undefined) return null;
-    return REVEALS.find(r => samePair(e.start?.pair, r.start) && samePair(e.reveal?.pair, r.reveal)) ?? null;
+    return REVEALS.find(r => r.kind === 'orbits' ? e.start?.orbits === r.start && e.reveal?.orbits === r.reveal
+      : samePair(e.start?.pair, r.start) && samePair(e.reveal?.pair, r.reveal)) ?? null;
   }
+  // The stage setting for one side of an approved reveal, and whether the stage currently shows (or targets) its reveal side.
+  const stageSide = (r, side) => r.kind === 'orbits' ? { orbits: side } : { pair: [...side] };
+  const atReveal = (r, state) => r.kind === 'orbits' ? state.orbits === r.reveal : !!state.pair && samePair(state.pair, r.reveal);
   // Spoken ratio words for the live region; the visible text keeps the numeral.
   const TIMES = Object.freeze({ 2: 'dvakrát', 3: 'trikrát', 4: 'štyrikrát', 5: 'päťkrát', 10: 'desaťkrát', 11: 'jedenásťkrát' });
   const earthMoonStep = s => s?.demo?.view === 'earth-moon';
@@ -132,7 +147,7 @@ window.Learn = (() => {
           if (!earthView && !(stageKind(kind) && s.demo === undefined)) throw Error('Invalid lesson experiment');
           // A comparison step is either unconfigured (the planet lineup) or exactly one approved start → reveal pair.
           if (kind === 'size-comparison') {
-            const keys = Object.keys(s.experiment), part = v => v === undefined || v && typeof v === 'object' && Object.keys(v).length === 1 && Array.isArray(v.pair);
+            const keys = Object.keys(s.experiment), part = v => v === undefined || v && typeof v === 'object' && Object.keys(v).length === 1 && (Array.isArray(v.pair) || typeof v.orbits === 'string');
             if (keys.some(k => !['kind', 'start', 'reveal'].includes(k)) || !part(s.experiment.start) || !part(s.experiment.reveal)) throw Error('Invalid lesson experiment');
             if ((s.experiment.start !== undefined || s.experiment.reveal !== undefined) && !revealOf(s)) throw Error('Invalid lesson experiment');
           }
@@ -306,7 +321,7 @@ window.Learn = (() => {
       // A comparison stage starts with all eight planets (or a configured step's start pair); Earth experiments receive
       // their lesson configuration.
       const reveal = revealOf(current);
-      experimentOf(current).begin(!sizeComparison(current) ? current.experiment : reveal ? { pair: [...reveal.start] } : { lineup: 'planets' }, () => { if (active && session === owner) syncExperiment(); });
+      experimentOf(current).begin(!sizeComparison(current) ? current.experiment : reveal ? stageSide(reveal, reveal.start) : { lineup: 'planets' }, () => { if (active && session === owner) syncExperiment(); });
     }
   }
   function syncExperiment() {
@@ -366,21 +381,25 @@ window.Learn = (() => {
   // A busy stage is always moving between the two pairs, so the panel describes the pair it is leaving until the move
   // ends; this also holds for a panel rebuilt mid-transition (for example after a responsive layout change).
   function syncReveal(state) {
-    const ui = experimentUI, { start, reveal, show, back, intro, result, announceReveal, announceBack } = ui.reveal;
-    const target = state.pair && samePair(state.pair, reveal) ? reveal : start;
-    const shown = state.busy ? (target === reveal ? start : reveal) : target;
-    // Names from SizeData (it also holds the stars the Solar System scene does not have, such as Betelgeuse).
-    const [big, small] = shown.map(id => SizeData.bodies[id].name), count = Math.round(SizeData.ratio(...shown));
+    const ui = experimentUI, entry = ui.reveal, { start, reveal, show, back, intro, result, announceReveal, announceBack } = entry;
+    // While busy the panel describes the side it is leaving (Phase 6G.4.4), for pairs and orbit states alike.
+    const revealed = state.busy ? !atReveal(entry, state) : atReveal(entry, state);
+    let pairResult = null, words = null;
+    if (entry.kind !== 'orbits') {
+      // Pair texts; names from SizeData (it also holds the stars the Solar System scene does not have, such as Betelgeuse).
+      const shown = revealed ? reveal : start, [big, small] = shown.map(id => SizeData.bodies[id].name), count = Math.round(SizeData.ratio(...shown));
+      pairResult = `${big} má približne ${count}-krát väčší priemer ako ${small}.`;
+      words = `${big} má približne ${TIMES[count] ?? `${count}-krát`} väčší priemer ako ${small}. Porovnávame priemery, nie objemy.`;
+    }
     setAvailability(ui.primary, !state.active, state.busy); ui.back.hidden = true;
     if (!ui.fitted && ui.info.offsetHeight > 0) fitReveal(ui); // Waits until the panel is laid out.
-    const revealed = shown === reveal;
     ui.primary.textContent = revealed ? back : show;
-    ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : revealed ? result ?? `${big} má približne ${count}-krát väčší priemer ako ${small}.` : intro;
+    ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : revealed ? result ?? pairResult : intro;
+    if (entry.noteBefore) ui.note.textContent = revealed ? entry.noteAfter : entry.noteBefore;
     // The explanation keeps its place in every state, so the panel never changes height when it appears.
     if (ui.detail) ui.detail.style.visibility = revealed && state.active ? '' : 'hidden';
     if (comparisonPending && state.active && !state.busy) {
       comparisonPending = false;
-      const words = `${big} má približne ${TIMES[count] ?? `${count}-krát`} väčší priemer ako ${small}. Porovnávame priemery, nie objemy.`;
       announce((revealed ? announceReveal : announceBack) ?? words);
     }
   }
@@ -389,13 +408,28 @@ window.Learn = (() => {
   // fall below the panel's visible area. Both only act when needed.
   function fitReveal(ui) {
     ui.fitted = true;
-    const { intro, result } = ui.reveal, before = ui.info.textContent;
-    if (result && ui.info.offsetHeight > 2) {
-      const heights = [intro, result].map(text => { ui.info.textContent = text; return ui.info.offsetHeight; });
-      ui.info.style.minHeight = `${Math.max(...heights)}px`; ui.info.textContent = before;
+    const { intro, result, noteBefore, noteAfter } = ui.reveal;
+    const hold = (element, texts) => {
+      if (element.offsetHeight <= 2) return; // Screen-reader-only on this layout.
+      const before = element.textContent, heights = texts.map(text => { element.textContent = text; return element.offsetHeight; });
+      element.style.minHeight = `${Math.max(...heights)}px`; element.textContent = before;
+    };
+    if (result) hold(ui.info, [intro, result]);
+    if (noteBefore) hold(ui.note, [noteBefore, noteAfter]);
+    // Orbit view on phones (Phase 6G.5.4.2a): an opened explanation scrolls inside the panel body, which keeps its collapsed
+    // height, so the panel never grows over the orbit diagram and its legend.
+    const details = document.getElementById('learn-experiment-details'), body = root.querySelector('.learn-body');
+    if (ui.reveal.kind === 'orbits' && compactMoonLayout.matches && details && body && !details.hidden) {
+      details.hidden = true; const collapsed = body.offsetHeight; details.hidden = false;
+      Object.assign(body.style, { maxHeight: `${collapsed}px`, overflowY: 'auto' }); details.style.maxHeight = 'none';
+      // The body no longer moves the button when the note changes, so the note takes only its own lines here; with a
+      // tighter gap the start of the explanation shows below the button and the rest scrolls.
+      ui.note.style.minHeight = ''; details.style.marginTop = '4px';
     }
     const actions = ui.primary.parentElement;
     if (root.dataset.layout === 'side' && !actions.contains(document.activeElement) && ui.primary.getBoundingClientRect().bottom > root.getBoundingClientRect().bottom) ui.info.before(actions);
+    // The visible short result (orbit view) follows the action when it would otherwise fall below the side panel's view.
+    if (root.dataset.layout === 'side' && ui.reveal.noteBefore && ui.note.getBoundingClientRect().bottom > root.getBoundingClientRect().bottom) ui.info.before(ui.note);
   }
   // Requests are ignored while the stage moves or reveals, so repeated activation cannot queue extra changes.
   function compare(action) {
@@ -404,7 +438,7 @@ window.Learn = (() => {
     const stage = experimentOf(current), state = stage.state();
     if (!state.active || state.busy) return;
     const reveal = revealOf(current);
-    const next = reveal ? { pair: [...(state.pair && samePair(state.pair, reveal.reveal) ? reveal.start : reveal.reveal)] } : action === 'back' ? { lineup: 'planets' } : !state.pair ? { pair: [...COMPARISON_PAIR] } : { pair: [...COMPARISON_PAIR], reference: !state.reference };
+    const next = reveal ? stageSide(reveal, atReveal(reveal, state) ? reveal.start : reveal.reveal) : action === 'back' ? { lineup: 'planets' } : !state.pair ? { pair: [...COMPARISON_PAIR] } : { pair: [...COMPARISON_PAIR], reference: !state.reference };
     comparisonPending = true;
     if (!stage.configure(next)) comparisonPending = false;
     syncExperiment();
@@ -583,7 +617,7 @@ window.Learn = (() => {
       }
       if (sizeComparison(s)) {
         const reveal = revealOf(s);
-        const info = el('p', null, 'learn-comparison-info'), note = el('p', reveal ? 'Porovnávame priemery, nie objemy.' : 'Porovnávame priemery planét, nie ich objemy.', 'learn-comparison-note');
+        const info = el('p', null, 'learn-comparison-info'), note = el('p', reveal?.noteBefore ?? (reveal ? 'Porovnávame priemery, nie objemy.' : 'Porovnávame priemery planét, nie ich objemy.'), 'learn-comparison-note');
         const primary = button('', () => compare('primary'), 'learn-primary'), back = button('Späť na všetky planéty', () => compare('back'));
         primary.dataset.focus = 'comparison-primary'; back.dataset.focus = 'comparison-back';
         const actions = el('div', null, 'learn-experiment-actions'); actions.append(primary, back);
