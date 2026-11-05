@@ -2959,18 +2959,22 @@
             return { begin, configure, end, update, render, state, turn, pick, get active() { return !!saved; } };
         })();
 
-        // Light Laboratory stage (Phase 6H.2 engine, Phase 6H.3.1 Earth–Moon scene). Its own scene and orthographic camera on the
-        // shared renderer and loop. Physics: LightSim keeps the active time, LightData gives every distance, LightSim.kmToWorld
-        // places it (1 world unit = 1 000 km, +x from the light source). The source is Earth's surface on the Moon side (x = 0);
-        // the light stops at exactly 1 s, then a second run continues to the Moon's near-side surface. The camera only maps world
-        // units to pixels. Marker rings, glow, the dashed route and the lighting are illustrative and have a fixed screen size.
+        // Light Laboratory stage (Phase 6H.2 engine, 6H.3.1 Earth–Moon scene, 6H.3.2 interaction). Its own scene and orthographic
+        // camera on the shared renderer and loop. Physics: LightSim keeps the active time, LightData gives every distance,
+        // LightSim.kmToWorld places it (1 world unit = 1 000 km, +x from the light source). The source is Earth's surface on the
+        // Moon side (x = 0); the light stops at exactly 1 s, then a second run continues to the Moon's near-side surface. The
+        // camera only maps world units to pixels. Marker rings, glow, the dashed route, the prediction tick and the lighting are
+        // illustrative and have a fixed screen size. A learner's prediction never changes the simulation.
         // Like the comparison stage it lives only inside Learn (a lesson step of kind 'light-travel'; for tests and development,
-        // lightStage.begin() while Learn is open). Leaving Learn, Quiz or a step change ends it. No lesson uses it yet.
+        // lightStage.begin() while Learn is open). Leaving Learn, Quiz or a step change ends it, countdown included.
         const lightStage = (() => {
             let stage = null, saved = null, notify = null, run = null, overlay = null, listening = false, frameKey = '', layout = null;
-            // Demonstration phases: ready → first (1 s run) → one-second → second (to the Moon) → arrived.
-            let phase = 'ready', offsetSeconds = 0;
-            const BEAM_PX = 2.5, HEAD_PX = 7, GLOW_PX = Object.freeze([46, 14]), RING_PX = 18, RING_BELOW_PX = 16, GAP_PX = 1.5;
+            // Phases: ready → countdown → first (1 s run) → one-second → second (to the Moon) → arrived. Pausing is the run's own
+            // state inside first/second. The countdown is measured on the same monotonic clock in update(); it is not active time.
+            let phase = 'ready', offsetSeconds = 0, countdownStart = 0, countdownLeft = 0, interrupted = false, skipped = false, prediction = null;
+            const COUNTDOWN_MS = 3000, BEAM_PX = 2.5, HEAD_PX = 7, GLOW_PX = Object.freeze([46, 14]), RING_PX = 18, RING_BELOW_PX = 16, GAP_PX = 1.5, TIP_PX = Object.freeze([2, 20]);
+            // A prediction counts as close within 10 % of the Earth–Moon surface route (about 37 600 km either side of the 1 s point).
+            const TIP_TOLERANCE = 0.1;
             // Physical layout in world units, from LightData only. Earth's centre is one radius behind the source.
             function geometry() {
                 const em = LightData.earthMoon, w = LightSim.kmToWorld;
@@ -3010,22 +3014,24 @@
                 const route = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(g.surface, 0, 0)]),
                     new THREE.LineDashedMaterial({ color: 0x5c7389, transparent: true, opacity: 0.75, dashSize: 1, gapSize: 1 }));
                 route.computeLineDistances(); route.position.z = 10;
-                const gap = flat(0x8bd8ff, 0.7), beam = flat(0xffe08a);
+                const gap = flat(0x8bd8ff, 0.7), beam = flat(0xffe08a), tip = flat(0x5ee0ff);
                 const glow = new THREE.Mesh(square, new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
                 const head = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24), new THREE.MeshBasicMaterial({ color: 0xfff6d8 }));
-                const ringGeometry = new THREE.RingGeometry(0.44, 0.5, 48), ringMaterial = new THREE.MeshBasicMaterial({ color: 0x8bc0dd, transparent: true, opacity: 0.8, depthWrite: false });
-                const rings = { earth: new THREE.Mesh(ringGeometry, ringMaterial), moon: new THREE.Mesh(ringGeometry, ringMaterial) };
+                const ringGeometry = new THREE.RingGeometry(0.44, 0.5, 48);
+                const ringMaterial = () => new THREE.MeshBasicMaterial({ color: 0x8bc0dd, transparent: true, opacity: 0.8, depthWrite: false });
+                const rings = { earth: new THREE.Mesh(ringGeometry, ringMaterial()), moon: new THREE.Mesh(ringGeometry, ringMaterial()) };
                 rings.earth.position.set(g.earthX, 0, 12); rings.moon.position.set(g.moonX, 0, 12);
-                gap.position.z = 11; beam.position.z = 13; glow.position.z = 14; head.position.z = 15;
-                scene.add(route, gap, beam, glow, head, rings.earth, rings.moon);
+                // Drawing order: gap, prediction tick, beam, glow, head (the actual light is always on top of the prediction).
+                gap.position.z = 11; tip.position.z = 12.5; beam.position.z = 13; glow.position.z = 14; head.position.z = 15;
+                scene.add(route, gap, tip, beam, glow, head, rings.earth, rings.moon);
                 overlay = document.createElement('div'); overlay.id = 'light-stage-overlay'; overlay.hidden = true;
-                overlay.setAttribute('aria-hidden', 'true'); // Visual labels and readouts; the Learn panel will carry the text (Phase 6H.3.2).
+                overlay.setAttribute('aria-hidden', 'true'); // Visual labels and readouts; the Learn panel carries the text.
                 const part = (cls, text = '') => { const el = document.createElement('div'); el.className = cls; el.textContent = text; overlay.append(el); return el; };
                 const labels = { earth: part('light-label', 'Zem'), moon: part('light-label', 'Mesiac') };
                 const scale = part('light-scale'); scale.append(document.createElement('span')); scale.lastChild.textContent = '100 000 km';
-                const time = part('light-time'), distance = part('light-distance'), remaining = part('light-gap'), note = part('light-note', 'Krúžok je značka, nie skutočná veľkosť.');
+                const time = part('light-time'), distance = part('light-distance'), tipLabel = part('light-tip', 'Môj tip'), note = part('light-note', 'Krúžok je značka, nie skutočná veľkosť.');
                 document.body.append(overlay);
-                stage = { scene, camera, earth, moon, route, gap, beam, glow, head, rings, labels, scale, time, distance, remaining, note, g };
+                stage = { scene, camera, earth, moon, route, gap, tip, beam, glow, head, rings, labels, scale, time, distance, tipLabel, note, g };
             }
             // Usable area between the planet bar and the Learn panel (the same rule as the comparison stage).
             function area() {
@@ -3045,7 +3051,7 @@
                 if (key === frameKey) return;
                 frameKey = key;
                 const g = stage.g, margin = box.width < 420 || box.height < 260 ? 28 : 64;
-                const perPx = (g.right - g.left) / Math.max(1, box.width - 2 * margin), y = box.top + Math.min(box.height * 0.42, Math.max(36, box.height / 2 - 40));
+                const perPx = (g.right - g.left) / Math.max(1, box.width - 2 * margin), y = box.top + Math.min(box.height * 0.42, Math.max(44, box.height / 2 - 40));
                 const left = g.left - (box.left + margin) * perPx, top = y * perPx;
                 Object.assign(stage.camera, { left, right: left + innerWidth * perPx, top, bottom: top - innerHeight * perPx });
                 stage.camera.updateProjectionMatrix();
@@ -3055,22 +3061,37 @@
                 for (const id of ['earth', 'moon']) { // A ring only where the body is too small to recognise; never the body itself.
                     const ring = stage.rings[id], show = sizes[id] < RING_BELOW_PX; ring.visible = show; ring.scale.setScalar(px(Math.max(RING_PX, sizes[id] + 8)));
                 }
+                stage.tip.scale.set(px(TIP_PX[0]), px(TIP_PX[1]), 1);
                 const below = Math.max(RING_PX, sizes.earth + 8) / 2 + 6, place = (el, x, yy) => Object.assign(el.style, { left: `${Math.round(x)}px`, top: `${Math.round(yy)}px` });
                 place(stage.labels.earth, sx(g.earthX), y + below); place(stage.labels.moon, sx(g.moonX), y + below);
-                const scalePx = LightSim.kmToWorld(100000) / perPx;
-                place(stage.scale, box.left + margin, y + below + 30); stage.scale.style.width = `${scalePx.toFixed(1)}px`;
-                place(stage.time, box.left + box.width / 2, y + below + 30); place(stage.distance, box.left + box.width / 2, y + below + 30 + (margin > 28 ? 50 : 34));
-                stage.note.hidden = !(stage.rings.earth.visible || stage.rings.moon.visible);
-                place(stage.note, box.left + margin, Math.min(box.top + box.height - 18, y + below + 30 + (margin > 28 ? 84 : 62)));
-                layout = { box, perPx, y, sx, sizes, margin };
+                const scalePx = LightSim.kmToWorld(100000) / perPx, roomy = margin > 28;
+                // Short free areas (small phones): time and distance share one row to the right of the scale bar.
+                const compact = y + below + 30 + (roomy ? 50 : 34) + 22 > box.top + box.height;
+                place(stage.scale, box.left + margin, y + below + (compact ? 24 : 30)); stage.scale.style.width = `${scalePx.toFixed(1)}px`;
+                stage.time.classList.toggle('is-compact', compact); stage.distance.hidden = compact;
+                if (compact) place(stage.time, box.left + margin + scalePx + 14, y + below + 20);
+                else { place(stage.time, box.left + box.width / 2, y + below + 30); place(stage.distance, box.left + box.width / 2, y + below + 30 + (roomy ? 50 : 34)); }
+                // The ring note sits below the readouts when there is room; otherwise only the Learn panel's explanation carries it.
+                const noteBelow = y + below + 30 + (roomy ? 84 : 62), fitsBelow = noteBelow + 16 <= box.top + box.height;
+                stage.note.hidden = !(stage.rings.earth.visible || stage.rings.moon.visible) || !fitsBelow;
+                place(stage.note, box.left + margin, noteBelow);
+                layout = { box, perPx, y, sx, sizes, margin, compact };
             }
-            // Light position: total active time (offset + this run) from LightSim, distance from LightData; at arrival the exact
-            // LightData surface distance and travel time are shown (no rounding from adding two runs).
+            // Light position: total active time (offset + this run) from LightSim, distance from LightData. The stops show the exact
+            // LightData values (1 s and c × 1 s; the surface distance and travel time), never a sum of two rounded runs.
             function reading() {
                 const shot = run ? run.snapshot() : null, em = LightData.earthMoon;
                 if (phase === 'arrived') return { shot, seconds: LightData.earthMoonTravelSeconds(), km: em.surfaceKm };
-                const seconds = offsetSeconds + (shot ? shot.activeSeconds : 0);
-                return { shot, seconds, km: offsetSeconds ? LightData.lightDistanceKm(offsetSeconds) + shot.travelledKm : shot ? shot.travelledKm : 0 };
+                if (phase === 'one-second') return { shot, seconds: 1, km: LightData.lightDistanceKm(1) };
+                if (phase !== 'first' && phase !== 'second') return { shot, seconds: 0, km: 0 };
+                return { shot, seconds: offsetSeconds + shot.activeSeconds, km: offsetSeconds ? LightData.lightDistanceKm(offsetSeconds) + shot.travelledKm : shot.travelledKm };
+            }
+            // The learner's prediction: a fraction of the surface route (0 = Earth, 1 = the Moon), or null before any choice.
+            function predicted() {
+                if (prediction === null) return null;
+                const km = prediction * LightData.earthMoon.surfaceKm, actual = LightData.lightDistanceKm(1), tolerance = TIP_TOLERANCE * LightData.earthMoon.surfaceKm;
+                const verdict = Math.abs(km - actual) <= tolerance ? 'close' : km < actual ? 'further' : 'shorter'; // light went further / not as far
+                return { fraction: prediction, km, verdict, toleranceKm: tolerance };
             }
             function place() {
                 const { seconds, km } = reading(), g = stage.g, perPx = layout.perPx, x = Math.min(LightSim.kmToWorld(km), g.surface);
@@ -3080,59 +3101,82 @@
                 stage.head.scale.setScalar(HEAD_PX * perPx); stage.head.position.set(x, 0, 15);
                 const showGap = phase === 'one-second';
                 stage.gap.visible = showGap; stage.gap.scale.set(Math.max(g.surface - x, 1e-9), GAP_PX * perPx, 1); stage.gap.position.set((x + g.surface) / 2, 0, 11);
-                // Readouts: "≈" marks rounded live values; values at the stops are exact (1 s, c × 1 s, the surface distance).
-                const live = phase === 'first' || phase === 'second';
-                const time = phase === 'one-second' ? LightData.formatDuration(1, 3) : phase === 'arrived' ? `≈ ${LightData.formatDuration(seconds, 3)}` : LightData.formatDuration(seconds, 2);
-                const distance = phase === 'one-second' ? `Svetlo prešlo ${LightData.formatKm(km, 3)}` : phase === 'arrived' ? `Svetlo prešlo ${LightData.formatKm(km, 1)} – je na Mesiaci`
-                    : live ? `Svetlo prešlo ≈ ${LightData.formatKm(Math.round(km / 1000) * 1000)}` : `Svetlo prešlo ${LightData.formatKm(0)}`;
-                if (stage.time.textContent !== time) stage.time.textContent = time;
-                if (stage.distance.textContent !== distance) stage.distance.textContent = distance;
-                stage.remaining.hidden = !showGap;
-                if (showGap) {
-                    const text = `K Mesiacu zostáva ${LightData.formatKm(Math.max(0, LightData.earthMoon.surfaceKm - km), 3)}`;
-                    if (stage.remaining.textContent !== text) stage.remaining.textContent = text;
-                    // Centred over the gap, but kept inside the free area (it must not run off-screen or under the panel).
-                    const box = layout.box, half = stage.remaining.offsetWidth / 2, mid = layout.sx((x + g.surface) / 2);
-                    const cx = Math.min(Math.max(mid, box.left + half), box.left + box.width - half);
-                    Object.assign(stage.remaining.style, { left: `${Math.round(cx)}px`, top: `${Math.round(layout.y - 34)}px` });
+                // Prediction tick and its label: the same physical-to-screen mapping as the light; behind the light, never moving it.
+                const tip = predicted();
+                stage.tip.visible = !!tip; stage.tipLabel.hidden = !tip;
+                if (tip) {
+                    const tx = LightSim.kmToWorld(tip.km), box = layout.box, half = stage.tipLabel.offsetWidth / 2;
+                    stage.tip.position.set(tx, 0, 12.5);
+                    const cx = Math.min(Math.max(layout.sx(tx), box.left + half), box.left + box.width - half);
+                    Object.assign(stage.tipLabel.style, { left: `${Math.round(cx)}px`, top: `${Math.round(layout.y - TIP_PX[1] / 2 - 20)}px` });
                 }
-                for (const [id, mesh, name] of [['earth', stage.earth, 'Zem'], ['moon', stage.moon, 'Mesiac']]) { // textures may load after build
+                // A calm arrival sign: the Moon's marker ring turns warm (no flash, no pulse).
+                stage.rings.moon.material.color.set(phase === 'arrived' ? 0xffe08a : 0x8bc0dd);
+                // Readouts: "≈" marks rounded values; the 1 s stop is exact (1 s, c × 1 s).
+                const live = phase === 'first' || phase === 'second', counting = phase === 'countdown';
+                const time = counting ? String(countdownLeft) : phase === 'one-second' ? LightData.formatDuration(1, 3) : phase === 'arrived' ? `≈ ${LightData.formatDuration(seconds, 2)}` : LightData.formatDuration(seconds, 2);
+                const distance = counting ? 'Pozor…' : phase === 'one-second' ? `Svetlo prešlo ${LightData.formatKm(km, 3)}` : phase === 'arrived' ? `Svetlo prešlo ${LightData.formatKm(km, 1)} – je na Mesiaci`
+                    : live ? `Svetlo prešlo ≈ ${LightData.formatKm(Math.round(km / 1000) * 1000)}` : `Svetlo prešlo ${LightData.formatKm(0)}`;
+                // Compact readout: one row "time · distance" with the distance shortened (same values and rounding marks).
+                const short = counting ? 'Pozor…' : phase === 'one-second' ? LightData.formatKm(km, 3) : phase === 'arrived' ? LightData.formatKm(km, 1) : live ? `≈ ${LightData.formatKm(Math.round(km / 1000) * 1000)}` : LightData.formatKm(0);
+                const shown = layout.compact ? `${time} · ${short}` : time;
+                if (stage.time.textContent !== shown) stage.time.textContent = shown;
+                stage.time.classList.toggle('is-countdown', counting);
+                if (stage.distance.textContent !== distance) stage.distance.textContent = distance;
+                for (const [mesh, name] of [[stage.earth, 'Zem'], [stage.moon, 'Mesiac']]) { // textures may load after build
                     const map = mainMap(name);
                     if (map && mesh.material.map !== map) { mesh.material.map = map; mesh.material.color.set(0xffffff); mesh.material.needsUpdate = true; }
                 }
             }
             function publish() { if (notify) notify(); }
-            // Hidden document (tab switch, minimised, phone backgrounded): pause, never resume by itself. Focus loss is ignored.
-            function onHidden() { if (document.visibilityState === 'hidden' && run?.pause('hidden')) publish(); }
+            // Hidden document (tab switch, minimised, phone backgrounded): a running light pauses; a countdown is cancelled. Neither
+            // continues by itself. Focus loss is ignored.
+            function onHidden() {
+                if (document.visibilityState !== 'hidden') return;
+                if (phase === 'countdown') { phase = 'ready'; interrupted = true; publish(); }
+                else if (run?.pause('hidden')) publish();
+            }
             function listen(on) {
                 if (on === listening) return;
                 listening = on;
                 const method = on ? 'addEventListener' : 'removeEventListener';
                 document[method]('visibilitychange', onHidden); window[method]('pagehide', onHidden);
             }
-            // One run per segment; its completion moves the demonstration on (exactly once, by LightSim).
+            // One run per segment; its completion moves the experiment on (exactly once, by LightSim).
             function newRun(durationSeconds, next) {
                 let created = null;
                 created = LightSim.createRun({ durationSeconds, onComplete: () => { if (run === created) { phase = next; publish(); } } });
                 run?.dispose(); run = created;
             }
-            // Earth–Moon is the only scene; other configuration keys (kind) are ignored.
+            // Earth–Moon is the only scene; other configuration keys (kind) are ignored. The prediction is kept (Learn owns it).
             function configure() {
                 if (!saved) return false;
-                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; frameKey = '';
+                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; interrupted = false; skipped = false; countdownLeft = 0; frameKey = '';
                 publish();
                 return true;
             }
+            // "Vyšli svetlo": a 3-2-1 countdown, then the 1 s run. Only from ready, so repeated clicks cannot start twice.
             function start() {
                 if (!saved || phase !== 'ready') return false;
-                newRun(1, 'one-second'); phase = 'first'; run.start(); publish(); return true;
+                phase = 'countdown'; countdownStart = performance.now(); countdownLeft = 3; interrupted = false; skipped = false; publish(); return true;
             }
             function toMoon() {
                 if (!saved || phase !== 'one-second') return false;
-                offsetSeconds = 1; newRun(LightData.earthMoonTravelSeconds() - 1, 'arrived'); phase = 'second'; run.start(); publish(); return true;
+                offsetSeconds = 1; newRun(LightData.earthMoonTravelSeconds() - 1, 'arrived'); phase = 'second'; skipped = false; run.start(); publish(); return true;
+            }
+            // Reduced motion alternative: the next result without movement (exact values; the simulation itself is not run).
+            function skip() {
+                if (!saved || !['ready', 'countdown', 'one-second'].includes(phase)) return false;
+                run?.dispose(); run = null; offsetSeconds = 0; skipped = true;
+                phase = phase === 'one-second' ? 'arrived' : 'one-second'; publish(); return true;
             }
             const pass = name => () => { if (!saved || !run || !['first', 'second'].includes(phase)) return false; const done = run[name](); if (done) publish(); return done; };
             function reset() { if (!saved) return false; return configure(); }
+            function setPrediction(value) {
+                if (value !== null && !(typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1)) return false;
+                if (prediction === value) return true;
+                prediction = value; publish(); return true;
+            }
             function begin(next, onChange) {
                 end();
                 if (!Learn.active || isQuizMode || isQuizResults) return false;
@@ -3150,7 +3194,8 @@
             function end() {
                 if (!saved) return;
                 listen(false);
-                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; notify = null; frameKey = ''; layout = null;
+                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; countdownLeft = 0; interrupted = false; skipped = false; prediction = null;
+                notify = null; frameKey = ''; layout = null;
                 overlay.hidden = true;
                 controls.enabled = saved.controls;
                 if (areOrbitsActive !== saved.playing) toggleOrbit();
@@ -3158,9 +3203,16 @@
                 saved = null;
                 syncNavigationPresentation();
             }
+            // Per frame: end outside Learn; the countdown (one digit per second, then the run starts); the run samples its clock.
             function update() {
                 if (saved && (!Learn.active || isQuizMode || isQuizResults)) end();
-                if (saved && run) run.update();
+                if (!saved) return;
+                if (phase === 'countdown') {
+                    const elapsed = performance.now() - countdownStart;
+                    if (elapsed >= COUNTDOWN_MS) { countdownLeft = 0; newRun(1, 'one-second'); phase = 'first'; run.start(); publish(); }
+                    else { const left = 3 - Math.floor(elapsed / 1000); if (left !== countdownLeft) { countdownLeft = left; publish(); } }
+                }
+                if (run) run.update();
             }
             // Draws the stage instead of the Solar System; false when inactive.
             function render() {
@@ -3171,14 +3223,14 @@
             }
             function state() {
                 if (!saved) return { active: false };
-                const { shot, seconds, km } = reading(), g = stage.g, em = LightData.earthMoon;
+                const { shot, seconds, km } = reading(), g = stage.g, em = LightData.earthMoon, tip = predicted();
                 const view = layout ? { perPx: layout.perPx, y: layout.y, earth: { x: layout.sx(g.earthX), diameterPx: layout.sizes.earth, ring: stage.rings.earth.visible },
                     moon: { x: layout.sx(g.moonX), diameterPx: layout.sizes.moon, ring: stage.rings.moon.visible }, source: layout.sx(0), moonSurface: layout.sx(g.surface),
-                    front: layout.sx(Math.min(LightSim.kmToWorld(km), g.surface)), scalePx: LightSim.kmToWorld(100000) / layout.perPx } : null;
-                return { active: true, phase, run: shot?.state ?? null, pauseReason: shot?.pauseReason ?? null, seconds, travelledKm: km,
-                    remainingKm: Math.max(0, em.surfaceKm - km), arrived: phase === 'arrived', world: { ...g }, view };
+                    front: layout.sx(Math.min(LightSim.kmToWorld(km), g.surface)), tip: tip ? layout.sx(LightSim.kmToWorld(tip.km)) : null, scalePx: LightSim.kmToWorld(100000) / layout.perPx } : null;
+                return { active: true, phase, run: shot?.state ?? null, paused: shot?.state === 'paused', pauseReason: shot?.pauseReason ?? null, countdown: phase === 'countdown' ? countdownLeft : 0,
+                    interrupted, skipped, seconds, travelledKm: km, remainingKm: Math.max(0, em.surfaceKm - km), arrived: phase === 'arrived', prediction: tip, world: { ...g }, view };
             }
-            return { begin, configure, end, update, render, state, start, toMoon, pause: pass('pause'), resume: pass('resume'), reset, get active() { return !!saved; } };
+            return { begin, configure, end, update, render, state, start, toMoon, skip, setPrediction, pause: pass('pause'), resume: pass('resume'), reset, get active() { return !!saved; } };
         })();
 
         // One Learn body map. Lesson IDs resolve to existing scene bodies only.

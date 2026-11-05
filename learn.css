@@ -410,3 +410,23 @@ body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12
 #light-stage-overlay .light-scale { height: 5px; border: 1.5px solid #8fb3cf; border-top: 0; }
 #light-stage-overlay .light-scale span { position: absolute; top: 8px; left: 0; font-size: 12px; color: #a8bacd; }
 #light-stage-overlay .light-note { font-size: 12px; color: #a8bacd; }
+
+/* Phase 6H.3.2: Earth–Moon light experiment – the panel's message, prediction slider and the stage's prediction label. */
+.learn-light-message { margin: 8px 0 0; }
+.learn-light-message p { margin: 0 0 4px; }
+.learn-light-lead { margin: 0 0 8px; font-size: 17px; font-weight: 600; color: #fff4c8; }
+.learn-light-lead[hidden], .learn-light-pick[hidden] { display: none; }
+.learn-light-box { display: flex; flex-direction: column; } /* no collapsing margins: every state's height is measured inside the box */
+.learn-light-pick { margin: 0 0 8px; }
+.learn-light-pick label { display: block; font-size: 14px; color: #c3d2de; }
+.learn-light-pick input[type="range"] { display: block; width: 100%; min-height: 44px; margin: 0; accent-color: #5ee0ff; touch-action: pan-y; cursor: pointer; }
+.learn-light-pick input[type="range"]:disabled { cursor: default; opacity: .75; }
+.learn-light-pick input[type="range"]:focus-visible { outline: 2px solid #8bd8ff; outline-offset: 2px; }
+.learn-light-ends { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: -6px; font-size: 12px; color: #a8bacd; }
+.learn-light-tip-text { font-size: 13px; color: #a8dff0; text-align: center; }
+#learn-root.is-light-experiment .learn-experiment-actions { flex-wrap: wrap; }
+body.is-light-stage #learn-root.learn-panel[data-layout="side"] { bottom: calc(12px + env(safe-area-inset-bottom)); }
+#light-stage-overlay .light-tip { transform: translateX(-50%); font-size: 12px; font-weight: 600; color: #5ee0ff; }
+#light-stage-overlay .light-time.is-countdown { color: #8bd8ff; }
+@media (max-width: 700px) and (min-height: 521px) { #learn-root.is-light-experiment .learn-light-lead { font-size: 16px; } }
+#light-stage-overlay .light-time.is-compact { transform: none; font-size: 17px; }

@@ -13,7 +13,7 @@ window.Learn = (() => {
   // Phone portrait screens keep the Moon drawing and its buttons; the explanation opens on request.
   const compactMoonLayout = window.matchMedia('(max-width: 700px) and (min-height: 521px)');
   // Steps whose 3D view must stay visible beside the panel on short landscape tablets.
-  const sideStep = s => s.type === 'tour' || s.type === 'classify' || s.demo?.view === 'earth-moon' || sizeComparison(s);
+  const sideStep = s => s.type === 'tour' || s.type === 'classify' || s.demo?.view === 'earth-moon' || sizeComparison(s) || lightTravel(s);
   const el = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
   function button(text, action, cls) { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', action); return b; }
   // Learn-only camera views and the single body each one supports.
@@ -24,9 +24,16 @@ window.Learn = (() => {
   const moonPhases = s => s?.type === 'experiment' && s.experiment.kind === 'moon-phases';
   // Stage-backed experiments (adapter.stages) draw their own scene and need no Solar System camera view.
   const sizeComparison = s => s?.type === 'experiment' && s.experiment.kind === 'size-comparison';
+  // The Earth–Moon light experiment (Phase 6H.3.2) shares the comparison steps' compact, side and panel layouts.
+  const lightTravel = s => s?.type === 'experiment' && s.experiment.kind === 'light-travel';
   const stageKind = kind => typeof kind === 'string' && Object.prototype.hasOwnProperty.call(adapter.stages ?? {}, kind);
   const experimentOf = s => s?.type !== 'experiment' ? null : stageKind(s.experiment.kind) ? adapter.stages[s.experiment.kind] : adapter.experiments[s.experiment.kind];
-  const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || (moonPhases(s) || sizeComparison(s)) && compactMoonLayout.matches;
+  const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || (moonPhases(s) || sizeComparison(s) || lightTravel(s)) && compactMoonLayout.matches;
+  // Light experiment (Phase 6H.3.2): the learner's prediction (0–100 % of the Earth–Moon surface route, or null before any
+  // choice) lives for the lesson session, so a repeated run keeps it for comparison. It never changes the simulation.
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let lightTip = null;
+  const lightNumber = (value, digits) => new Intl.NumberFormat('sk-SK', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
   // The comparison the size-comparison experiment offers (Phase 6G.3); the stage accepts any planet pair.
   const COMPARISON_PAIR = Object.freeze(['jupiter', 'earth']);
   // Planet inspection (Phase 6G.7.1): planets in order from the Sun, the turn step for the buttons and the panel texts.
@@ -301,7 +308,7 @@ window.Learn = (() => {
   function start(id) {
     if (!active) return;
     const found = data.lessons.find(l => l.id === id); if (!found) return;
-    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; tourReading = false; viewReading = false; render();
+    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; tourReading = false; viewReading = false; lightTip = null; render();
   }
   function move(index, stopIndex = 0) {
     if (!active || !lesson || index < 0 || index >= lesson.steps.length) return;
@@ -336,6 +343,7 @@ window.Learn = (() => {
     const state = experimentOf(lesson.steps[step]).state();
     if (experimentUI.kind === 'moon-phases') { syncMoonPhases(state); return; }
     if (experimentUI.kind === 'size-comparison') { syncComparison(state); return; }
+    if (experimentUI.kind === 'light-travel') { syncLight(state); return; }
     setAvailability(experimentUI.turn, !state.active, state.busy);
     experimentUI.reset.disabled = !state.active;
     experimentUI.light.textContent = state.active ? (state.day ? 'DEŇ' : 'NOC') : 'Pripravujeme pokus…';
@@ -476,6 +484,106 @@ window.Learn = (() => {
   // Short landscape (Phase 6G.7.1.1): the whole side panel scrolls. Opening or closing an inspection starts it at the top,
   // so the heading, the way back and the turn buttons are in view; the navigation below stays reachable by scrolling.
   function sideTop() { if (root.dataset.layout === 'side') root.scrollTop = 0; }
+  // Light experiment panel (Phase 6H.3.2). The stage state is the only record of the experiment; the panel explains it and
+  // announces only the start, a pause, the 1 s result and the arrival (never during the run).
+  function lightCopy(state, tight = false) {
+    const tip = state.prediction, near = km => LightData.formatKm(Math.round(km / 1000) * 1000);
+    const travelled = LightData.lightDistanceKm(1), remaining = LightData.earthMoonProgress(1).remainingKm;
+    const roundedTravel = Math.round(travelled / 1000) * 1000, roundedRemaining = Math.round(remaining / 500) * 500;
+    const verdict = !tip ? null : tip.verdict === 'close' ? 'Tvoj odhad bol blízko!' : tip.verdict === 'further' ? 'Svetlo doletelo ďalej, než si odhadol.' : 'Svetlo nedoletelo tak ďaleko, ako si odhadol.';
+    // Result: three short facts and the tip feedback; exact values and the tip in km are in the explanation (lightDetail).
+    const tipLine = tip ? verdict : 'Nabudúce si najprv tipni posúvačom.';
+    if (state.phase === 'countdown') return { lines: ['Pozor… svetlo vyrazí o chvíľu.'] };
+    if (state.phase === 'first' || state.phase === 'second') {
+      if (!state.paused) return { lines: ['Svetlo letí k Mesiacu…'] };
+      return { lines: ['Experiment je pozastavený.', ...(state.pauseReason === 'hidden' ? ['Zastavili sme ho, keď si odišiel zo stránky.'] : [])] };
+    }
+    const about = roundedTravel > travelled ? 'takmer' : 'približne';
+    if (state.phase === 'one-second') return { lead: 'Ani svetlo nestihlo doraziť!', lines: [`Prešlo ${about} ${LightData.formatKm(roundedTravel)}.`, `K Mesiacu zostáva približne ${LightData.formatKm(roundedRemaining)}.`, tipLine] };
+    if (state.phase === 'arrived') return { lead: `Svetlo dorazilo na Mesiac približne za ${lightNumber(state.seconds, 2)} sekundy.`, lines: ['Aj svetlo potrebuje na cestu k Mesiacu viac ako jednu sekundu.'] };
+    // Compact and side panels keep only the question (the slider sits right below it); wider panels add the hint.
+    const hint = state.interrupted ? 'Odpočítavanie sme zastavili, keď si odišiel zo stránky. Svetlo vyšleš znova tlačidlom.' : tight ? null : 'Posuň posúvač na miesto, kam podľa teba svetlo doletí. Nemusíš byť presný.';
+    return { lead: 'Kam sa podľa teba dostane svetlo za jednu sekundu?', lines: hint ? [hint] : [] };
+  }
+  function fillLight(ui, copy) {
+    ui.lead.textContent = copy.lead ?? ''; ui.lead.hidden = !copy.lead;
+    ui.message.replaceChildren(...copy.lines.map(line => el('p', line)));
+  }
+  // Once per panel build: the experiment box keeps the height of its tallest state (ready, the longest result, arrival), so
+  // the panel and with it the route never move between states (the comparison panel holds its note the same way).
+  function holdLight(ui) {
+    if (ui.held || ui.box.offsetHeight <= 2) return;
+    ui.held = true; ui.output.textContent = 'Ešte si netipol'; // the tip row as it will read
+    const samples = [{ phase: 'ready', prediction: null }, { phase: 'one-second', prediction: { verdict: 'shorter', km: 376000 } }, { phase: 'arrived', seconds: LightData.earthMoonTravelSeconds() }];
+    const heights = samples.map(sample => {
+      fillLight(ui, lightCopy(sample, ui.tight)); ui.pick.hidden = sample.phase !== 'ready'; ui.secondary.hidden = sample.phase !== 'one-second';
+      ui.skip.hidden = !(reducedMotion.matches && sample.phase !== 'arrived');
+      return ui.box.getBoundingClientRect().height;
+    });
+    ui.box.style.minHeight = `${Math.max(...heights)}px`; ui.copyKey = null;
+  }
+  // The explanation area ("Vysvetlenie"): the exact values behind the short result and the learner's tip in kilometres.
+  function lightDetail(state) {
+    const em = LightData.earthMoon, tip = state.prediction;
+    const science = `Svetlo prejde za 1 sekundu presne ${LightData.formatKm(LightData.lightDistanceKm(1), 3)}. Od povrchu Zeme k povrchu Mesiaca je to v priemere ${LightData.formatKm(em.surfaceKm, 1)} `
+      + `(stred Zeme – stred Mesiaca ${LightData.formatKm(em.centerKm)}), preto svetlu cesta trvá približne ${lightNumber(LightData.earthMoonTravelSeconds(), 2)} sekundy. Po 1 sekunde mu zostáva ${LightData.formatKm(LightData.earthMoonProgress(1).remainingKm, 3)}.`;
+    return tip ? [science, `Tvoj tip: približne ${LightData.formatKm(Math.round(tip.km / 1000) * 1000)} od Zeme. Za „blízko“ považujeme tip do ${LightData.formatKm(Math.round(tip.toleranceKm / 1000) * 1000)} od skutočnej polohy svetla po 1 sekunde.`] : [science];
+  }
+  function syncLight(state) {
+    const ui = experimentUI;
+    holdLight(ui);
+    const detail = lightDetail(state), detailKey = detail.join('|');
+    if (ui.detailKey !== detailKey) { ui.detailKey = detailKey; ui.science.replaceChildren(...detail.map(text => el('p', text, 'learn-note'))); }
+    const copy = lightCopy(state, ui.tight), key = JSON.stringify(copy);
+    if (ui.copyKey !== key) { ui.copyKey = key; fillLight(ui, copy); }
+    // The stage follows the learner's prediction (it is kept in Learn across repeats and step re-entry).
+    const wanted = lightTip === null ? null : lightTip / 100;
+    if ((state.prediction?.fraction ?? null) !== wanted) experimentOf(lesson.steps[step]).setPrediction(wanted);
+    const ready = state.phase === 'ready', running = state.phase === 'first' || state.phase === 'second';
+    ui.slider.disabled = !ready;
+    ui.pick.hidden = !ready; // after the start the tip stays visible on the route (and in the result text)
+    if (ui.slider.disabled && ui.pick.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
+    const tipKm = lightTip === null ? null : LightData.formatKm(Math.round(lightTip / 100 * LightData.earthMoon.surfaceKm / 1000) * 1000);
+    const tipText = tipKm === null ? 'Ešte si netipol' : `Môj tip: ≈ ${tipKm}`;
+    if (ui.output.textContent !== tipText) ui.output.textContent = tipText;
+    ui.slider.setAttribute('aria-valuetext', tipKm === null ? 'Ešte si netipol' : `Môj tip: približne ${tipKm} od Zeme, ${lightTip} % cesty k Mesiacu`);
+    // The held height may only grow (fonts or a longer text), so no later state can move the route back.
+    const height = ui.box.getBoundingClientRect().height;
+    if (ui.held && height > parseFloat(ui.box.style.minHeight || '0') + 0.01) ui.box.style.minHeight = `${height}px`;
+    ui.primary.textContent = state.phase === 'countdown' ? (state.countdown ? `Pozor… ${state.countdown}` : 'Pozor…') : running ? (state.paused ? 'Pokračovať' : 'Pozastaviť')
+      : state.phase === 'one-second' ? 'Pokračovať k Mesiacu' : state.phase === 'arrived' ? 'Opakovať pokus' : 'Vyšli svetlo';
+    setAvailability(ui.primary, false, state.phase === 'countdown'); // aria-disabled: a second click cannot cancel or restart
+    ui.secondary.textContent = state.phase === 'countdown' ? 'Zrušiť' : 'Začať odznova';
+    ui.secondary.hidden = !(state.phase === 'countdown' || (running && state.paused) || state.phase === 'one-second');
+    if (ui.secondary.hidden && ui.secondary.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
+    ui.skip.textContent = state.phase === 'one-second' ? 'Ukáž príchod bez animácie' : 'Ukáž výsledok bez animácie';
+    ui.skip.hidden = !(reducedMotion.matches && (ready || state.phase === 'one-second'));
+    if (ui.skip.hidden && ui.skip.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
+    // One announcement per change of state, never during the run.
+    const moment = state.phase === 'countdown' ? 'countdown' : running ? (state.paused ? 'paused' : 'running') : state.phase;
+    if (ui.moment !== moment) {
+      const previous = ui.moment; ui.moment = moment;
+      if (moment === 'countdown') announce('Pozor, svetlo vyrazí po odpočítaní: tri, dva, jeden.');
+      else if (moment === 'running' && previous === 'countdown') announce('Svetlo vyrazilo.');
+      else if (moment === 'running' && previous === 'paused') announce('Pokračujeme.');
+      else if (moment === 'paused') announce(copy.lines.join(' '));
+      else if (moment === 'one-second' || moment === 'arrived') { const full = lightCopy(state, false); announce([full.lead, ...full.lines].join(' ')); } // full text for screen readers
+      else if (moment === 'ready' && previous && previous !== 'ready') announce(state.interrupted ? copy.lines[0] : 'Pokus je pripravený. Môžeš zmeniť svoj tip.');
+    }
+  }
+  function lightAction(action) {
+    const current = active && lesson?.steps[step];
+    if (!lightTravel(current)) return;
+    const stage = experimentOf(current), state = stage.state();
+    if (!state.active) return;
+    if (action === 'reset') stage.reset();
+    else if (action === 'skip') stage.skip();
+    else if (state.phase === 'ready') stage.start();
+    else if (state.phase === 'first' || state.phase === 'second') { if (state.paused) stage.resume(); else stage.pause(); }
+    else if (state.phase === 'one-second') stage.toMoon();
+    else if (state.phase === 'arrived') stage.reset();
+    syncExperiment();
+  }
   function turnPlanet(yaw, pitch) {
     const current = active && lesson?.steps[step];
     if (!sizeComparison(current)) return;
@@ -506,7 +614,8 @@ window.Learn = (() => {
     root.classList.toggle('is-expanded', expanded);
     root.classList.toggle('is-experiment', !!lesson && dayNight(lesson.steps[step]));
     root.classList.toggle('is-moon-experiment', !!lesson && moonPhases(lesson.steps[step]));
-    root.classList.toggle('is-comparison-experiment', !!lesson && sizeComparison(lesson.steps[step]));
+    root.classList.toggle('is-comparison-experiment', !!lesson && (sizeComparison(lesson.steps[step]) || lightTravel(lesson.steps[step])));
+    root.classList.toggle('is-light-experiment', !!lesson && lightTravel(lesson.steps[step]));
     root.classList.toggle('is-earth-moon', !!lesson && earthMoonStep(lesson.steps[step]));
     root.classList.toggle('is-tour', !!tour);
     root.classList.toggle('is-classify', !!sorting); root.classList.toggle('is-result', !!sorting && !item);
@@ -703,6 +812,36 @@ window.Learn = (() => {
         else if (experimentUI.turn) body.append(experimentUI.turn);
         if (experimentUI.pick && !compactExperiment) body.append(experimentUI.pick);
         body.append(details);
+      }
+      if (lightTravel(s)) {
+        // Light experiment: a short message, the prediction slider (native range, 0–100 % of the surface route), the actions.
+        const lead = el('p', null, 'learn-light-lead'), message = el('div', null, 'learn-light-message'); message.id = 'learn-light-message';
+        // The question above is the visible label; the <label> names the slider for assistive technology.
+        const pick = el('div', null, 'learn-light-pick'), label = el('label', 'Môj tip: kam doletí svetlo za 1 sekundu?', 'learn-visually-hidden'), slider = el('input');
+        slider.type = 'range'; slider.id = 'learn-light-tip'; slider.min = '0'; slider.max = '100'; slider.step = '1'; slider.value = String(lightTip ?? 50);
+        label.htmlFor = slider.id;
+        // One row under the slider: the route's ends and, between them, the learner's tip in kilometres.
+        const ends = el('div', null, 'learn-light-ends'), output = el('span', null, 'learn-light-tip-text'); output.id = 'learn-light-tip-text';
+        const start = el('span', 'Zem'), finish = el('span', 'Mesiac'); start.setAttribute('aria-hidden', 'true'); finish.setAttribute('aria-hidden', 'true');
+        ends.append(start, output, finish); slider.setAttribute('aria-describedby', output.id);
+        slider.addEventListener('input', () => { lightTip = Number(slider.value); syncExperiment(); });
+        pick.append(label, slider, ends);
+        const primary = button('Vyšli svetlo', () => lightAction('primary'), 'learn-primary'), secondary = button('Začať odznova', () => lightAction('reset'));
+        const skip = button('Ukáž výsledok bez animácie', () => lightAction('skip'));
+        primary.dataset.focus = 'light-primary'; secondary.dataset.focus = 'light-secondary'; skip.dataset.focus = 'light-skip';
+        secondary.hidden = true; skip.hidden = true;
+        const actions = el('div', null, 'learn-experiment-actions'); actions.append(primary, secondary, skip);
+        // Order: headline, slider (ready only), actions, then the explanation, so the main action never drops below the fold.
+        const box = el('div', null, 'learn-light-box'); box.append(lead, pick, actions, message);
+        experimentUI = { kind: 'light-travel', box, lead, message, pick, slider, output, primary, secondary, skip, tight: compactExperiment || root.dataset.layout === 'side' };
+        const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
+        details.hidden = compactExperiment && !experimentDetailsOpen;
+        if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
+        if (s.text) details.append(el('p', s.text));
+        if (s.note) details.append(el('p', s.note, 'learn-note'));
+        const science = el('div', null, 'learn-light-science'); experimentUI.science = science;
+        details.append(science, el('p', 'Krúžky okolo malých telies sú len značky, nie ich skutočná veľkosť. Zem aj Mesiac majú správnu veľkosť aj vzdialenosť.', 'learn-note'));
+        body.append(box, details);
       }
       if (s.type === 'question') {
         const group = el('fieldset'); group.append(el('legend', 'Vyber jednu odpoveď'));
