@@ -398,3 +398,15 @@ body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12
 /* Phones: the four turn buttons sit beside "Späť na porovnanie" in the action row. */
 #learn-root .learn-experiment-actions .learn-inspect-turn { flex: 0 0 auto; margin: 0; gap: 4px; }
 #learn-root.is-comparison-experiment .learn-experiment-actions .learn-inspect-turn button { flex: 0 0 44px; width: 44px; min-width: 44px; padding: 0; font-size: 18px; }
+
+/* Phase 6H.3.1: Earth–Moon light scene – labels, readouts and scale bar over the light stage (visual only; aria-hidden). */
+#light-stage-overlay { position: fixed; inset: 0; z-index: 20; pointer-events: none; color: #c3d2de; line-height: 1.25; }
+#light-stage-overlay[hidden], #light-stage-overlay [hidden] { display: none; }
+#light-stage-overlay > div { position: absolute; white-space: nowrap; }
+#light-stage-overlay .light-label { transform: translateX(-50%); font-size: 14px; font-weight: 600; color: #e8f2fa; }
+#light-stage-overlay .light-time { transform: translateX(-50%); font-size: clamp(24px, 2.6vw, 40px); font-weight: 700; color: #fff4c8; font-variant-numeric: tabular-nums; }
+#light-stage-overlay .light-distance { transform: translateX(-50%); font-size: clamp(14px, 1.2vw, 18px); font-variant-numeric: tabular-nums; }
+#light-stage-overlay .light-gap { transform: translateX(-50%); font-size: 13px; color: #8bd8ff; font-variant-numeric: tabular-nums; }
+#light-stage-overlay .light-scale { height: 5px; border: 1.5px solid #8fb3cf; border-top: 0; }
+#light-stage-overlay .light-scale span { position: absolute; top: 8px; left: 0; font-size: 12px; color: #a8bacd; }
+#light-stage-overlay .light-note { font-size: 12px; color: #a8bacd; }

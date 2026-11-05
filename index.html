@@ -2959,33 +2959,73 @@
             return { begin, configure, end, update, render, state, turn, pick, get active() { return !!saved; } };
         })();
 
-        // Light Laboratory stage (Phase 6H.2): technical foundation only, no lesson uses it yet. Its own scene and orthographic
-        // camera on the shared renderer and loop. A LightSim run keeps the active time, LightData turns it into kilometres and
-        // LightSim.kmToWorld places it (1 world unit = 1 000 km, +x from the light source); the camera only maps world units to
-        // pixels. Like the comparison stage it lives only inside Learn: a lesson step of kind 'light-travel', or (tests and
-        // development only) lightStage.begin() while Learn is open. Leaving Learn, Quiz or a step change ends it.
+        // Light Laboratory stage (Phase 6H.2 engine, Phase 6H.3.1 Earth–Moon scene). Its own scene and orthographic camera on the
+        // shared renderer and loop. Physics: LightSim keeps the active time, LightData gives every distance, LightSim.kmToWorld
+        // places it (1 world unit = 1 000 km, +x from the light source). The source is Earth's surface on the Moon side (x = 0);
+        // the light stops at exactly 1 s, then a second run continues to the Moon's near-side surface. The camera only maps world
+        // units to pixels. Marker rings, glow, the dashed route and the lighting are illustrative and have a fixed screen size.
+        // Like the comparison stage it lives only inside Learn (a lesson step of kind 'light-travel'; for tests and development,
+        // lightStage.begin() while Learn is open). Leaving Learn, Quiz or a step change ends it. No lesson uses it yet.
         const lightStage = (() => {
-            let stage = null, saved = null, notify = null, run = null, config = null, overlay = null, listening = false, frameKey = '', layout = null;
-            const MARGIN_PX = 48, MARKER_PX = 10, TICK_PX = Object.freeze([2, 18]);
-            const STATE_TEXT = Object.freeze({ idle: 'pripravené', running: 'beží', paused: 'pozastavené', completed: 'dokončené', disposed: 'ukončené' });
-            // Built once and kept: scene, camera, a unit line (shared by the track and the light), the light front and two end ticks.
+            let stage = null, saved = null, notify = null, run = null, overlay = null, listening = false, frameKey = '', layout = null;
+            // Demonstration phases: ready → first (1 s run) → one-second → second (to the Moon) → arrived.
+            let phase = 'ready', offsetSeconds = 0;
+            const BEAM_PX = 2.5, HEAD_PX = 7, GLOW_PX = Object.freeze([46, 14]), RING_PX = 18, RING_BELOW_PX = 16, GAP_PX = 1.5;
+            // Physical layout in world units, from LightData only. Earth's centre is one radius behind the source.
+            function geometry() {
+                const em = LightData.earthMoon, w = LightSim.kmToWorld;
+                return { earthX: -w(em.earthRadiusKm), earthR: w(em.earthRadiusKm), moonX: w(em.surfaceKm + em.moonRadiusKm), moonR: w(em.moonRadiusKm),
+                    surface: w(em.surfaceKm), left: -w(2 * em.earthRadiusKm), right: w(em.surfaceKm + 2 * em.moonRadiusKm) };
+            }
+            // The main scene's own textures (already loaded): never loaded twice and never disposed here.
+            function mainMap(name) {
+                const mesh = name === 'Zem' ? planets.find(p => p.userData.name === name) : satellites.find(m => m.userData.name === name);
+                if (!mesh) return null;
+                return mesh.material.isShaderMaterial ? mesh.material.uniforms.dayMap?.value ?? null : mesh.material.map ?? null;
+            }
+            // A soft trailing glow: bright at the right edge (the light front), fading backwards. Nothing extends ahead of the front.
+            function glowTexture() {
+                const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 32;
+                const ctx = canvas.getContext('2d'), across = ctx.createLinearGradient(0, 0, 128, 0);
+                across.addColorStop(0, 'rgba(255,224,138,0)'); across.addColorStop(1, 'rgba(255,236,170,0.85)');
+                ctx.fillStyle = across; ctx.fillRect(0, 0, 128, 32);
+                ctx.globalCompositeOperation = 'destination-in';
+                const down = ctx.createLinearGradient(0, 0, 0, 32);
+                down.addColorStop(0, 'rgba(0,0,0,0)'); down.addColorStop(0.5, 'rgba(0,0,0,1)'); down.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = down; ctx.fillRect(0, 0, 128, 32);
+                return new THREE.CanvasTexture(canvas);
+            }
+            // Built once and kept, like the comparison stage.
             function build() {
                 if (stage) return;
                 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x000005);
-                const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -10, 10);
-                const unitLine = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 0, 0)]);
-                const unitSquare = new THREE.PlaneGeometry(1, 1);
-                const track = new THREE.Line(unitLine, new THREE.LineBasicMaterial({ color: 0x5c7389 }));
-                const light = new THREE.Line(unitLine, new THREE.LineBasicMaterial({ color: 0xffe08a }));
-                const front = new THREE.Mesh(unitSquare, new THREE.MeshBasicMaterial({ color: 0xfff4c8 }));
-                const tickMaterial = new THREE.MeshBasicMaterial({ color: 0x8fb3cf }), ticks = [new THREE.Mesh(unitSquare, tickMaterial), new THREE.Mesh(unitSquare, tickMaterial)];
-                light.position.z = front.position.z = 1;
-                scene.add(track, light, front, ...ticks);
+                const key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(-0.35, 0.45, 1); // camera side: readable, no phase
+                scene.add(new THREE.AmbientLight(0xffffff, 0.4), key);
+                const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 200); camera.position.z = 100;
+                const sphere = new THREE.SphereGeometry(1, 48, 32), square = new THREE.PlaneGeometry(1, 1), g = geometry();
+                const body = (x, r) => { const mesh = new THREE.Mesh(sphere, new THREE.MeshStandardMaterial({ color: 0x9aa6b2, roughness: 1, metalness: 0 })); mesh.position.set(x, 0, 0); mesh.scale.setScalar(r); scene.add(mesh); return mesh; };
+                const earth = body(g.earthX, g.earthR), moon = body(g.moonX, g.moonR);
+                earth.rotation.y = -1.9; // Europe and Africa towards the viewer (illustrative orientation)
+                const flat = (color, opacity = 1, extra = {}) => new THREE.Mesh(square, new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: false, ...extra }));
+                const route = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(g.surface, 0, 0)]),
+                    new THREE.LineDashedMaterial({ color: 0x5c7389, transparent: true, opacity: 0.75, dashSize: 1, gapSize: 1 }));
+                route.computeLineDistances(); route.position.z = 10;
+                const gap = flat(0x8bd8ff, 0.7), beam = flat(0xffe08a);
+                const glow = new THREE.Mesh(square, new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+                const head = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24), new THREE.MeshBasicMaterial({ color: 0xfff6d8 }));
+                const ringGeometry = new THREE.RingGeometry(0.44, 0.5, 48), ringMaterial = new THREE.MeshBasicMaterial({ color: 0x8bc0dd, transparent: true, opacity: 0.8, depthWrite: false });
+                const rings = { earth: new THREE.Mesh(ringGeometry, ringMaterial), moon: new THREE.Mesh(ringGeometry, ringMaterial) };
+                rings.earth.position.set(g.earthX, 0, 12); rings.moon.position.set(g.moonX, 0, 12);
+                gap.position.z = 11; beam.position.z = 13; glow.position.z = 14; head.position.z = 15;
+                scene.add(route, gap, beam, glow, head, rings.earth, rings.moon);
                 overlay = document.createElement('div'); overlay.id = 'light-stage-overlay'; overlay.hidden = true;
-                overlay.setAttribute('aria-hidden', 'true'); // A technical readout for tests, not lesson content.
-                Object.assign(overlay.style, { position: 'fixed', zIndex: '5', pointerEvents: 'none', font: '13px/1.5 system-ui, sans-serif', color: '#c3d2de', whiteSpace: 'pre' });
+                overlay.setAttribute('aria-hidden', 'true'); // Visual labels and readouts; the Learn panel will carry the text (Phase 6H.3.2).
+                const part = (cls, text = '') => { const el = document.createElement('div'); el.className = cls; el.textContent = text; overlay.append(el); return el; };
+                const labels = { earth: part('light-label', 'Zem'), moon: part('light-label', 'Mesiac') };
+                const scale = part('light-scale'); scale.append(document.createElement('span')); scale.lastChild.textContent = '100 000 km';
+                const time = part('light-time'), distance = part('light-distance'), remaining = part('light-gap'), note = part('light-note', 'Krúžok je značka, nie skutočná veľkosť.');
                 document.body.append(overlay);
-                stage = { scene, camera, track, light, front, ticks };
+                stage = { scene, camera, earth, moon, route, gap, beam, glow, head, rings, labels, scale, time, distance, remaining, note, g };
             }
             // Usable area between the planet bar and the Learn panel (the same rule as the comparison stage).
             function area() {
@@ -2998,29 +3038,68 @@
                 const top = nav.bottom + 12, bottom = visible && sheet ? rect.top - 12 : innerHeight - 16;
                 return { left, top, width: Math.max(60, right - left), height: Math.max(60, bottom - top) };
             }
-            // Camera framing: the span [0, spanKm] fills the usable width; world units per pixel are a view setting only.
+            // Camera framing: Earth's far limb to the Moon's far limb fills the usable width (room for the labels at both ends);
+            // the route sits a little above the middle so the readouts fit below it. Recomputed only when the area changes.
             function frame() {
-                const box = area(), key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height, config.spanKm].map(Math.round).join();
+                const box = area(), key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join();
                 if (key === frameKey) return;
                 frameKey = key;
-                const span = LightSim.kmToWorld(config.spanKm), perPx = span / Math.max(1, box.width - 2 * MARGIN_PX);
-                const left = -(box.left + MARGIN_PX) * perPx, top = (box.top + box.height / 2) * perPx;
+                const g = stage.g, margin = box.width < 420 || box.height < 260 ? 28 : 64;
+                const perPx = (g.right - g.left) / Math.max(1, box.width - 2 * margin), y = box.top + Math.min(box.height * 0.42, Math.max(36, box.height / 2 - 40));
+                const left = g.left - (box.left + margin) * perPx, top = y * perPx;
                 Object.assign(stage.camera, { left, right: left + innerWidth * perPx, top, bottom: top - innerHeight * perPx });
                 stage.camera.updateProjectionMatrix();
-                stage.track.scale.x = span;
-                stage.ticks.forEach((tick, i) => { tick.position.set(i * span, 0, 0); tick.scale.set(TICK_PX[0] * perPx, TICK_PX[1] * perPx, 1); });
-                stage.front.scale.set(MARKER_PX * perPx, MARKER_PX * perPx, 1);
-                Object.assign(overlay.style, { left: `${Math.round(box.left + MARGIN_PX)}px`, top: `${Math.round(box.top + box.height / 2 + 24)}px` });
-                layout = { box, perPx };
+                const sx = x => box.left + margin + (x - g.left) / perPx, px = v => v * perPx;
+                stage.route.material.dashSize = px(4); stage.route.material.gapSize = px(5);
+                const sizes = { earth: 2 * g.earthR / perPx, moon: 2 * g.moonR / perPx };
+                for (const id of ['earth', 'moon']) { // A ring only where the body is too small to recognise; never the body itself.
+                    const ring = stage.rings[id], show = sizes[id] < RING_BELOW_PX; ring.visible = show; ring.scale.setScalar(px(Math.max(RING_PX, sizes[id] + 8)));
+                }
+                const below = Math.max(RING_PX, sizes.earth + 8) / 2 + 6, place = (el, x, yy) => Object.assign(el.style, { left: `${Math.round(x)}px`, top: `${Math.round(yy)}px` });
+                place(stage.labels.earth, sx(g.earthX), y + below); place(stage.labels.moon, sx(g.moonX), y + below);
+                const scalePx = LightSim.kmToWorld(100000) / perPx;
+                place(stage.scale, box.left + margin, y + below + 30); stage.scale.style.width = `${scalePx.toFixed(1)}px`;
+                place(stage.time, box.left + box.width / 2, y + below + 30); place(stage.distance, box.left + box.width / 2, y + below + 30 + (margin > 28 ? 50 : 34));
+                stage.note.hidden = !(stage.rings.earth.visible || stage.rings.moon.visible);
+                place(stage.note, box.left + margin, Math.min(box.top + box.height - 18, y + below + 30 + (margin > 28 ? 84 : 62)));
+                layout = { box, perPx, y, sx, sizes, margin };
             }
-            // Places the light from the run's physical distance only.
-            function place(shot) {
-                const x = LightSim.kmToWorld(Math.min(shot.travelledKm, config.spanKm * 1.1));
-                stage.light.visible = x > 0; stage.light.scale.x = Math.max(x, 1e-9);
-                stage.front.position.set(x, 0, 1);
-                const text = `Technický test svetla · ${STATE_TEXT[shot.state]}${shot.pauseReason === 'hidden' ? ' (skrytá stránka)' : ''}\n`
-                    + `aktívny čas ${LightData.formatDuration(shot.activeSeconds, 3)} · vzdialenosť ${LightData.formatKm(shot.travelledKm, 3)}`;
-                if (overlay.textContent !== text) overlay.textContent = text;
+            // Light position: total active time (offset + this run) from LightSim, distance from LightData; at arrival the exact
+            // LightData surface distance and travel time are shown (no rounding from adding two runs).
+            function reading() {
+                const shot = run ? run.snapshot() : null, em = LightData.earthMoon;
+                if (phase === 'arrived') return { shot, seconds: LightData.earthMoonTravelSeconds(), km: em.surfaceKm };
+                const seconds = offsetSeconds + (shot ? shot.activeSeconds : 0);
+                return { shot, seconds, km: offsetSeconds ? LightData.lightDistanceKm(offsetSeconds) + shot.travelledKm : shot ? shot.travelledKm : 0 };
+            }
+            function place() {
+                const { seconds, km } = reading(), g = stage.g, perPx = layout.perPx, x = Math.min(LightSim.kmToWorld(km), g.surface);
+                stage.beam.visible = x > 0; stage.beam.scale.set(Math.max(x, 1e-9), BEAM_PX * perPx, 1); stage.beam.position.set(x / 2, 0, 13);
+                const glowLength = Math.min(GLOW_PX[0] * perPx, x); // trailing only: its right edge is the front
+                stage.glow.visible = x > 0; stage.glow.scale.set(Math.max(glowLength, 1e-9), GLOW_PX[1] * perPx, 1); stage.glow.position.set(x - glowLength / 2, 0, 14);
+                stage.head.scale.setScalar(HEAD_PX * perPx); stage.head.position.set(x, 0, 15);
+                const showGap = phase === 'one-second';
+                stage.gap.visible = showGap; stage.gap.scale.set(Math.max(g.surface - x, 1e-9), GAP_PX * perPx, 1); stage.gap.position.set((x + g.surface) / 2, 0, 11);
+                // Readouts: "≈" marks rounded live values; values at the stops are exact (1 s, c × 1 s, the surface distance).
+                const live = phase === 'first' || phase === 'second';
+                const time = phase === 'one-second' ? LightData.formatDuration(1, 3) : phase === 'arrived' ? `≈ ${LightData.formatDuration(seconds, 3)}` : LightData.formatDuration(seconds, 2);
+                const distance = phase === 'one-second' ? `Svetlo prešlo ${LightData.formatKm(km, 3)}` : phase === 'arrived' ? `Svetlo prešlo ${LightData.formatKm(km, 1)} – je na Mesiaci`
+                    : live ? `Svetlo prešlo ≈ ${LightData.formatKm(Math.round(km / 1000) * 1000)}` : `Svetlo prešlo ${LightData.formatKm(0)}`;
+                if (stage.time.textContent !== time) stage.time.textContent = time;
+                if (stage.distance.textContent !== distance) stage.distance.textContent = distance;
+                stage.remaining.hidden = !showGap;
+                if (showGap) {
+                    const text = `K Mesiacu zostáva ${LightData.formatKm(Math.max(0, LightData.earthMoon.surfaceKm - km), 3)}`;
+                    if (stage.remaining.textContent !== text) stage.remaining.textContent = text;
+                    // Centred over the gap, but kept inside the free area (it must not run off-screen or under the panel).
+                    const box = layout.box, half = stage.remaining.offsetWidth / 2, mid = layout.sx((x + g.surface) / 2);
+                    const cx = Math.min(Math.max(mid, box.left + half), box.left + box.width - half);
+                    Object.assign(stage.remaining.style, { left: `${Math.round(cx)}px`, top: `${Math.round(layout.y - 34)}px` });
+                }
+                for (const [id, mesh, name] of [['earth', stage.earth, 'Zem'], ['moon', stage.moon, 'Mesiac']]) { // textures may load after build
+                    const map = mainMap(name);
+                    if (map && mesh.material.map !== map) { mesh.material.map = map; mesh.material.color.set(0xffffff); mesh.material.needsUpdate = true; }
+                }
             }
             function publish() { if (notify) notify(); }
             // Hidden document (tab switch, minimised, phone backgrounded): pause, never resume by itself. Focus loss is ignored.
@@ -3031,21 +3110,29 @@
                 const method = on ? 'addEventListener' : 'removeEventListener';
                 document[method]('visibilitychange', onHidden); window[method]('pagehide', onHidden);
             }
-            // { durationSeconds (default 1; null = no stop), spanKm (default: the distance at the stop) }; other keys (kind) ignored.
-            function configure(next = {}) {
+            // One run per segment; its completion moves the demonstration on (exactly once, by LightSim).
+            function newRun(durationSeconds, next) {
+                let created = null;
+                created = LightSim.createRun({ durationSeconds, onComplete: () => { if (run === created) { phase = next; publish(); } } });
+                run?.dispose(); run = created;
+            }
+            // Earth–Moon is the only scene; other configuration keys (kind) are ignored.
+            function configure() {
                 if (!saved) return false;
-                const durationSeconds = next.durationSeconds === undefined ? 1 : next.durationSeconds;
-                let created, spanKm;
-                try { // Everything is validated before anything changes; an invalid configuration is refused, not thrown.
-                    created = LightSim.createRun({ durationSeconds, onComplete: () => { if (run === created) publish(); } });
-                    spanKm = next.spanKm ?? (durationSeconds === null ? LightData.earthMoon.surfaceKm : LightData.lightDistanceKm(durationSeconds));
-                } catch { return false; }
-                if (!(typeof spanKm === 'number' && Number.isFinite(spanKm) && spanKm > 0)) { created.dispose(); return false; }
-                run?.dispose(); run = created; config = Object.freeze({ durationSeconds, spanKm }); frameKey = '';
+                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; frameKey = '';
                 publish();
                 return true;
             }
-            const control = name => () => { if (!saved || !run) return false; const done = run[name](); if (done) publish(); return done; };
+            function start() {
+                if (!saved || phase !== 'ready') return false;
+                newRun(1, 'one-second'); phase = 'first'; run.start(); publish(); return true;
+            }
+            function toMoon() {
+                if (!saved || phase !== 'one-second') return false;
+                offsetSeconds = 1; newRun(LightData.earthMoonTravelSeconds() - 1, 'arrived'); phase = 'second'; run.start(); publish(); return true;
+            }
+            const pass = name => () => { if (!saved || !run || !['first', 'second'].includes(phase)) return false; const done = run[name](); if (done) publish(); return done; };
+            function reset() { if (!saved) return false; return configure(); }
             function begin(next, onChange) {
                 end();
                 if (!Learn.active || isQuizMode || isQuizResults) return false;
@@ -3063,8 +3150,8 @@
             function end() {
                 if (!saved) return;
                 listen(false);
-                run?.dispose(); run = null; config = null; notify = null; frameKey = ''; layout = null;
-                overlay.hidden = true; overlay.textContent = '';
+                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; notify = null; frameKey = ''; layout = null;
+                overlay.hidden = true;
                 controls.enabled = saved.controls;
                 if (areOrbitsActive !== saved.playing) toggleOrbit();
                 document.body.classList.remove('is-light-stage');
@@ -3078,17 +3165,20 @@
             // Draws the stage instead of the Solar System; false when inactive.
             function render() {
                 if (!saved) return false;
-                frame(); place(run.snapshot());
+                frame(); place();
                 renderer.render(stage.scene, stage.camera);
                 return true;
             }
             function state() {
                 if (!saved) return { active: false };
-                const shot = run.snapshot(), x = LightSim.kmToWorld(shot.travelledKm);
-                return { active: true, ...shot, spanKm: config.spanKm, worldX: x,
-                    screen: layout ? { x: layout.box.left + MARGIN_PX + x / layout.perPx, y: layout.box.top + layout.box.height / 2, perPx: layout.perPx } : null };
+                const { shot, seconds, km } = reading(), g = stage.g, em = LightData.earthMoon;
+                const view = layout ? { perPx: layout.perPx, y: layout.y, earth: { x: layout.sx(g.earthX), diameterPx: layout.sizes.earth, ring: stage.rings.earth.visible },
+                    moon: { x: layout.sx(g.moonX), diameterPx: layout.sizes.moon, ring: stage.rings.moon.visible }, source: layout.sx(0), moonSurface: layout.sx(g.surface),
+                    front: layout.sx(Math.min(LightSim.kmToWorld(km), g.surface)), scalePx: LightSim.kmToWorld(100000) / layout.perPx } : null;
+                return { active: true, phase, run: shot?.state ?? null, pauseReason: shot?.pauseReason ?? null, seconds, travelledKm: km,
+                    remainingKm: Math.max(0, em.surfaceKm - km), arrived: phase === 'arrived', world: { ...g }, view };
             }
-            return { begin, configure, end, update, render, state, start: control('start'), pause: control('pause'), resume: control('resume'), reset: control('reset'), get active() { return !!saved; } };
+            return { begin, configure, end, update, render, state, start, toMoon, pause: pass('pause'), resume: pass('resume'), reset, get active() { return !!saved; } };
         })();
 
         // One Learn body map. Lesson IDs resolve to existing scene bodies only.
