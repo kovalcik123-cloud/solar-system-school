@@ -29,6 +29,12 @@ window.Learn = (() => {
   const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || (moonPhases(s) || sizeComparison(s)) && compactMoonLayout.matches;
   // The comparison the size-comparison experiment offers (Phase 6G.3); the stage accepts any planet pair.
   const COMPARISON_PAIR = Object.freeze(['jupiter', 'earth']);
+  // Planet inspection (Phase 6G.7.1): planets in order from the Sun, the turn step for the buttons and the panel texts.
+  const INSPECT_BODIES = Object.freeze(['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']);
+  const INSPECT_STEP = Math.PI / 12; // 15°
+  const INSPECT_HINT = 'Klepni alebo klikni na planétu a preskúmaj ju zblízka.', INSPECT_NOTE = 'Zväčšený detail – nie v skutočnom pomere';
+  const PAIR_NOTE = 'Porovnávame priemery planét, nie ich objemy.', INSPECT_TURN = 'Potiahni planétu alebo ju otoč šípkami.';
+  const kmText = value => `${new Intl.NumberFormat('sk-SK').format(Math.round(value))} km`;
   // Approved configured comparisons (Phase 6G.4.2): a lesson may start at one pair and reveal the next. Only these exact
   // start → reveal combinations are accepted, so content cannot ask the stage for an unapproved star comparison.
   // An entry may give its own result sentence, announcements and an explanation shown after the reveal (Phase 6G.5.3:
@@ -359,7 +365,21 @@ window.Learn = (() => {
   // state (compare → show/hide the reference row, with aria-pressed), so keyboard focus never sits on a vanishing control.
   function syncComparison(state) {
     if (experimentUI.reveal) { syncReveal(state); return; }
-    const ui = experimentUI, [big, small] = COMPARISON_PAIR.map(id => adapter.bodyInfo(id).name);
+    const ui = experimentUI;
+    // The note keeps the height of its longest text (hint, pair note, disclaimer), so the lineup never moves (Phase 6G.7.1).
+    if (!ui.noteHeld && ui.note.offsetHeight > 2) {
+      ui.noteHeld = true; const before = ui.note.textContent;
+      // Exact (fractional) heights: a rounded value would move the true-scale lineup by a fraction of a pixel.
+      const heights = [INSPECT_HINT, PAIR_NOTE, INSPECT_TURN].map(text => { ui.note.textContent = text; return ui.note.getBoundingClientRect().height; });
+      ui.note.style.minHeight = `${Math.max(...heights)}px`; ui.note.textContent = before;
+    }
+    if (state.body) { syncInspect(state); return; }
+    if (ui.inspected) { ui.inspected = null; if (ui.turn.contains(document.activeElement)) ui.primary.focus({ preventScroll: true }); sideTop(); }
+    if (ui.text) ui.text.hidden = false; // The lineup's own words return with the lineup (Phase 6G.7.1.1).
+    ui.restart.hidden = false;
+    ui.turn.hidden = true; ui.pick.hidden = false; ui.info.classList.remove('learn-visually-hidden');
+    ui.pick.style.visibility = state.pair ? 'hidden' : ''; // Kept in the layout, so the pair view does not move the planets.
+    const [big, small] = COMPARISON_PAIR.map(id => adapter.bodyInfo(id).name);
     const count = Math.round(SizeData.ratio(...COMPARISON_PAIR)), pair = !!state.pair, reference = !!state.reference;
     setAvailability(ui.primary, !state.active, state.busy); setAvailability(ui.back, !state.active, state.busy);
     ui.primary.textContent = !pair ? `Porovnaj ${small} a ${big}` : reference ? `Skryť ${count} Zemí` : `Ukáž ${count} Zemí`;
@@ -368,8 +388,8 @@ window.Learn = (() => {
     ui.back.hidden = !pair;
     const sentence = `${big} má približne ${count}-krát väčší priemer ako ${small}.`, row = `${count} Zemí vedľa seba má približne rovnakú šírku ako ${big}.`;
     ui.info.textContent = !state.active ? 'Pripravujeme porovnanie…' : !pair ? 'Všetkých osem planét je v skutočnom pomere priemerov.' : reference ? row : sentence;
-    // Kept in the layout in every state, so the panel (and the stage area above it) never changes height.
-    ui.note.style.visibility = pair ? '' : 'hidden';
+    // Kept in the layout in every state: the lineup shows how to open a planet, the pair what is compared.
+    ui.note.textContent = pair ? PAIR_NOTE : INSPECT_HINT; ui.note.style.visibility = '';
     // Each finished request is announced once in the Learn live region.
     if (comparisonPending && state.active && !state.busy) {
       comparisonPending = false;
@@ -431,6 +451,36 @@ window.Learn = (() => {
     // The visible short result (orbit view) follows the action when it would otherwise fall below the side panel's view.
     if (root.dataset.layout === 'side' && ui.reveal.noteBefore && ui.note.getBoundingClientRect().bottom > root.getBoundingClientRect().bottom) ui.info.before(ui.note);
   }
+  // Inspection (Phase 6G.7.1): the enlarged planet, its name and real diameter, the disclaimer, the turn buttons and the way
+  // back. The stage state is the only record of which planet is open; it is announced once when it opens.
+  function syncInspect(state) {
+    const ui = experimentUI, name = SizeData.bodies[state.body].name, size = kmText(SizeData.bodies[state.body].diameterKm);
+    setAvailability(ui.primary, !state.active, state.busy); ui.back.hidden = true; ui.primary.removeAttribute('aria-pressed');
+    ui.primary.textContent = 'Späť na porovnanie';
+    ui.info.textContent = `${name} – priemer ${size}`;
+    // The stage caption shows the name, diameter and disclaimer; in the short side panel the info line is for screen readers.
+    ui.info.classList.toggle('learn-visually-hidden', root.dataset.layout === 'side');
+    ui.note.textContent = INSPECT_TURN; ui.note.style.visibility = '';
+    if (ui.pick.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
+    ui.pick.hidden = true; ui.turn.hidden = false;
+    if (ui.text) ui.text.hidden = true; // Its words describe the lineup, not the one enlarged planet.
+    // "Späť na porovnanie" already leads back to the lineup, so the restart waits until then (Phase 6G.7.1.2).
+    if (ui.restart.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
+    ui.restart.hidden = true;
+    if (ui.inspected !== state.body) {
+      ui.inspected = state.body; comparisonPending = false; sideTop();
+      announce(`${name}, priemer ${size}. ${INSPECT_NOTE}. Planétu otočíš potiahnutím alebo tlačidlami.`);
+    }
+  }
+  // Short landscape (Phase 6G.7.1.1): the whole side panel scrolls. Opening or closing an inspection starts it at the top,
+  // so the heading, the way back and the turn buttons are in view; the navigation below stays reachable by scrolling.
+  function sideTop() { if (root.dataset.layout === 'side') root.scrollTop = 0; }
+  function turnPlanet(yaw, pitch) {
+    const current = active && lesson?.steps[step];
+    if (!sizeComparison(current)) return;
+    const stage = experimentOf(current);
+    if (stage.state().body) stage.turn(yaw * INSPECT_STEP, pitch * INSPECT_STEP);
+  }
   // Requests are ignored while the stage moves or reveals, so repeated activation cannot queue extra changes.
   function compare(action) {
     const current = active && lesson?.steps[step];
@@ -438,7 +488,8 @@ window.Learn = (() => {
     const stage = experimentOf(current), state = stage.state();
     if (!state.active || state.busy) return;
     const reveal = revealOf(current);
-    const next = reveal ? stageSide(reveal, atReveal(reveal, state) ? reveal.start : reveal.reveal) : action === 'back' ? { lineup: 'planets' } : !state.pair ? { pair: [...COMPARISON_PAIR] } : { pair: [...COMPARISON_PAIR], reference: !state.reference };
+    const next = reveal ? stageSide(reveal, atReveal(reveal, state) ? reveal.start : reveal.reveal)
+      : action === 'inspect' ? { body: experimentUI.select.value } : state.body ? { lineup: 'planets' } : action === 'back' ? { lineup: 'planets' } : !state.pair ? { pair: [...COMPARISON_PAIR] } : { pair: [...COMPARISON_PAIR], reference: !state.reference };
     comparisonPending = true;
     if (!stage.configure(next)) comparisonPending = false;
     syncExperiment();
@@ -623,14 +674,34 @@ window.Learn = (() => {
         const actions = el('div', null, 'learn-experiment-actions'); actions.append(primary, back);
         experimentUI = { kind: 'size-comparison', info, note, primary, back };
         if (reveal) { back.hidden = true; experimentUI.reveal = reveal; }
+        else {
+          // Planet inspection: a compact accessible picker (also for planets only a few pixels wide) and the turn buttons.
+          const pick = el('div', null, 'learn-inspect-pick'), label = el('label', 'Preskúmaj planétu'), select = el('select');
+          select.id = 'learn-inspect-planet'; label.htmlFor = select.id;
+          INSPECT_BODIES.forEach(id => { const option = el('option', SizeData.bodies[id].name); option.value = id; select.append(option); });
+          const open = button('Zblízka', () => compare('inspect')); open.dataset.focus = 'inspect-open';
+          pick.append(label, select, open);
+          const turn = el('div', null, 'learn-inspect-turn'); turn.setAttribute('role', 'group'); turn.setAttribute('aria-label', 'Otáčanie planéty'); turn.hidden = true;
+          [['←', 'Otočiť doľava', -1, 0], ['→', 'Otočiť doprava', 1, 0], ['↑', 'Otočiť nahor', 0, -1], ['↓', 'Otočiť nadol', 0, 1]].forEach(([glyph, labelText, yaw, pitch]) => {
+            const b = button(glyph, () => turnPlanet(yaw, pitch)); b.setAttribute('aria-label', labelText); b.title = labelText; turn.append(b);
+          });
+          Object.assign(experimentUI, { pick, select, turn });
+        }
         const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
         details.hidden = compactExperiment && !experimentDetailsOpen;
         if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
-        if (s.text) details.append(el('p', s.text));
+        if (s.text) { experimentUI.text = el('p', s.text); details.append(experimentUI.text); }
         if (s.note) details.append(el('p', s.note, 'learn-note'));
         if (reveal?.detail) { experimentUI.detail = el('p', reveal.detail, 'learn-note'); details.append(experimentUI.detail); }
-        details.append(button('Začať porovnanie odznova', demonstrate));
-        body.append(info, note, actions, details);
+        // On phones the picker waits in the explanation, so the true-scale lineup keeps its approved size.
+        if (experimentUI.pick && compactExperiment) details.append(experimentUI.pick);
+        experimentUI.restart = button('Začať porovnanie odznova', demonstrate); details.append(experimentUI.restart);
+        body.append(info, note, actions);
+        // Phones: the turn buttons share the action row, so the panel (and the planet above it) keeps its height.
+        if (experimentUI.turn && compactExperiment) actions.append(experimentUI.turn);
+        else if (experimentUI.turn) body.append(experimentUI.turn);
+        if (experimentUI.pick && !compactExperiment) body.append(experimentUI.pick);
+        body.append(details);
       }
       if (s.type === 'question') {
         const group = el('fieldset'); group.append(el('legend', 'Vyber jednu odpoveď'));

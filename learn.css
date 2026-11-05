@@ -386,3 +386,15 @@ body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12
  .learn-panel.is-comparison-experiment .learn-body { padding: 0 10px 6px; }
  .learn-panel.is-comparison-experiment .learn-footer { padding: 6px 10px; }
 }
+
+/* Phase 6G.7.1: planet inspection – a compact planet picker and four turn buttons. */
+.learn-inspect-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 8px; }
+.learn-inspect-pick label { font-size: 14px; color: #c3d2de; }
+.learn-inspect-pick select { min-height: 44px; flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #8bc0dd44; border-radius: 10px; background: #0b1724; color: #e8f2fa; font: inherit; }
+.learn-inspect-pick select:focus-visible { outline: 2px solid #8bd8ff; outline-offset: 2px; }
+.learn-inspect-turn { display: flex; gap: 6px; margin: 0 0 8px; }
+.learn-inspect-turn[hidden], .learn-inspect-pick[hidden] { display: none; }
+#learn-root .learn-inspect-turn button { flex: 1; min-width: 44px; padding: 6px; font-size: 18px; line-height: 1; }
+/* Phones: the four turn buttons sit beside "Späť na porovnanie" in the action row. */
+#learn-root .learn-experiment-actions .learn-inspect-turn { flex: 0 0 auto; margin: 0; gap: 4px; }
+#learn-root.is-comparison-experiment .learn-experiment-actions .learn-inspect-turn button { flex: 0 0 44px; width: 44px; min-width: 44px; padding: 0; font-size: 18px; }

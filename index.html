@@ -2115,6 +2115,10 @@
             let starSphere = null, starMap = null; // Betelgeuse only: made on first use, then kept like the shared sphere.
             // Orbit view (Phase 6G.5.4): rings made on first use and kept; the shown Betelgeuse level (0 or 1) and its fade.
             let orbitParts = null, orbitLayout = null, orbitLevel = 0, orbitFade = null;
+            // Planet inspection (Phase 6G.7.1): an enlarged single body ({ body }), turned by the learner. Yaw is free, pitch is
+            // limited; the turn always starts from the planet's original orientation. The pointer state lives only while the stage does.
+            let inspectYaw = 0, inspectPitch = 0, pointer = null, savedTouchAction = null;
+            const INSPECT_PITCH = THREE.MathUtils.degToRad(25), TAP_PX = 8, PICK_PX = 22;
             const ORBIT_MS = 900, ORBITS = Object.freeze(['mercury', 'venus', 'earth', 'mars', 'jupiter']);
             // Directions (degrees, counter-clockwise from the right) of the label rays, one per orbit, fanned over the upper right.
             const ORBIT_ANGLES = Object.freeze([74, 56, 38, 20, 2]);
@@ -2307,7 +2311,20 @@
                 short.setAttribute('aria-hidden', 'true'); short.hidden = true;
                 markerNote.append(full, short, hint);
                 pair.append(pairList, sentence, reference, marker, markerNote);
-                overlay.append(list, markers, note, pair, buildOrbitOverlay());
+                overlay.append(list, markers, note, pair, buildOrbitOverlay(), buildInspectOverlay());
+            }
+            // Inspection caption (Phase 6G.7.1): name, real diameter, the "enlarged" disclaimer and the instruction, under the planet.
+            function buildInspectOverlay() {
+                const group = document.createElement('div'); group.className = 'comparison-inspect'; group.hidden = true;
+                Object.assign(group.style, { position: 'absolute', textAlign: 'center', pointerEvents: 'none' });
+                const name = document.createElement('strong'), size = document.createElement('span'), note = document.createElement('p'), hint = document.createElement('p');
+                name.className = 'inspect-name'; size.className = 'inspect-size'; note.className = 'inspect-disclaimer'; hint.className = 'inspect-hint';
+                Object.assign(name.style, { display: 'block', fontSize: '17px', fontWeight: '600' }); Object.assign(size.style, { display: 'block', fontSize: '14px', color: '#c3d2de' });
+                Object.assign(note.style, { display: 'inline-block', margin: '6px 0 0', padding: '3px 10px', borderRadius: '999px', border: '1px solid #f3c86a', color: '#ffe3a3', background: 'rgba(40,30,8,0.75)', fontSize: '14px', fontWeight: '600' });
+                Object.assign(hint.style, { margin: '4px 0 0', fontSize: '13px', color: '#c3d2de' });
+                note.textContent = 'Zväčšený detail – nie v skutočnom pomere'; hint.textContent = 'Potiahni planétu a preskúmaj jej povrch.';
+                group.append(name, size, note, hint);
+                return group;
             }
             // Orbit view texts (Phase 6G.5.4): tags beside the orbits (aria-hidden; names on wide screens, numbers on narrow
             // ones), one real-text legend for screen readers and narrow screens, the result sentence and a footnote.
@@ -2449,7 +2466,11 @@
                     if (previous?.orbits && previous.orbits !== config.orbits && !reducedCameraMotion.matches) orbitFade = { from: orbitLevel, to: level, start: performance.now() };
                     else { orbitLevel = level; setOrbitTexts(level === 1); }
                 }
-                overlay.hidden = !orthographic(config);
+                // Every new configuration starts from the original orientation (inspection turns only the inspected planet).
+                inspectYaw = 0; inspectPitch = 0; pointer = null; bodies.forEach(mesh => mesh.rotation.set(0, 0, 0));
+                if (config.body) { const g = overlay.querySelector('.comparison-inspect'); g.querySelector('.inspect-name').textContent = SizeData.bodies[config.body].name;
+                    g.querySelector('.inspect-size').textContent = `priemer ${km(SizeData.bodies[config.body].diameterKm)}`; }
+                overlay.hidden = !orthographic(config) && !config.body;
                 frameKey = ''; layouts = null; orbitLayout = null; publish();
                 return true;
             }
@@ -2624,6 +2645,7 @@
             // previous and target layouts with one interpolated scale (so every ratio stays exact on every frame).
             function frame(now) {
                 if (config.orbits) return frameOrbits(now);
+                if (config.body) return frameInspect();
                 overlayMode(false);
                 const box = area();
                 const key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join();
@@ -2690,12 +2712,89 @@
                 return scale;
             }
             // Orbit view (Phase 6G.5.4): only the orbit group shows in the overlay, and the rings only in this view.
-            function overlayMode(orbits) {
-                [...overlay.children].forEach(child => { child.hidden = child.classList.contains('comparison-orbits') ? !orbits : orbits; });
+            function overlayMode(orbits, inspect = false) {
+                [...overlay.children].forEach(child => { child.hidden = child.classList.contains('comparison-inspect') ? !inspect : child.classList.contains('comparison-orbits') ? !orbits : orbits || inspect; });
+                if (inspect) delete overlay.dataset.mode; // As for the orbit view: no lineup mode may show its legend here.
                 // The lineup's label mode (e.g. "numbers" lays its list out as a grid, which would override hidden) is the lineup's
                 // own; the lineup layout sets it again whenever the eight planets return (Phase 6G.6.1a).
                 if (orbits) delete overlay.dataset.mode;
                 if (!orbits && orbitParts) orbitParts.group.visible = false;
+            }
+            // Inspection (Phase 6G.7.1): the single-body path with room for the caption below the planet; only orientation changes.
+            function frameInspect() {
+                overlayMode(false, true);
+                const box = area(), key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join();
+                if (key !== frameKey) {
+                    frameKey = key;
+                    const g = overlay.querySelector('.comparison-inspect'), hint = g.querySelector('.inspect-hint'), size = g.querySelector('.inspect-size');
+                    g.style.width = `${box.width}px`;
+                    // Short areas keep name, diameter and the disclaimer (name and diameter on one line); the instruction is in Learn.
+                    hint.hidden = false; size.style.display = 'block'; g.querySelector('.inspect-name').style.display = 'block';
+                    if (box.height - g.offsetHeight - 12 < Math.max(120, box.height * 0.6)) {
+                        hint.hidden = true; size.style.display = 'inline'; g.querySelector('.inspect-name').style.display = 'inline';
+                        size.style.marginLeft = '6px';
+                    } else size.style.marginLeft = '0';
+                    const reserved = g.offsetHeight + 12, top = { ...box, height: Math.max(60, box.height - reserved) };
+                    frameSingle(top);
+                    g.style.left = `${box.left}px`; g.style.top = `${top.top + top.height + 6}px`;
+                }
+                const mesh = bodies.get(config.body);
+                mesh.position.set(0, 0, 0); mesh.scale.setScalar(1); mesh.rotation.set(inspectPitch, inspectYaw, 0); // Pitch about the screen's horizontal axis, yaw about the planet's own axis.
+                overlay.dataset.view = 'inspect';
+            }
+            function turn(dYaw, dPitch) {
+                if (!saved || !config?.body) return false;
+                inspectYaw = (inspectYaw + dYaw) % (Math.PI * 2);
+                inspectPitch = Math.min(INSPECT_PITCH, Math.max(-INSPECT_PITCH, inspectPitch + dPitch));
+                return true;
+            }
+            // The lineup planet under a tap: inside a disc (with a few pixels of tolerance), or else the nearest centre within PICK_PX
+            // when no other centre is almost as close. Returns null when nothing is clearly meant.
+            function pick(x, y) {
+                if (!saved || !config?.lineup || transition || !layouts?.to) return null;
+                const hits = [...layouts.to.bodies].map(([id, b]) => ({ id, d: Math.hypot(x - b.x, y - (b.y - b.r)), r: b.r })).sort((a, b) => a.d - b.d);
+                const inside = hits.find(h => h.d <= h.r + 3);
+                if (inside) return inside.id;
+                const [first, second] = hits;
+                return first && first.d <= PICK_PX && (!second || second.d - first.d >= 6) ? first.id : null;
+            }
+            // Pointer handling on the canvas, only while the stage is active: a tap on a lineup planet opens its inspection; in
+            // inspection a drag turns the planet (pointer capture; no momentum). Main-scene picking and OrbitControls are already off.
+            function onPointerDown(event) {
+                if (!saved || (!config?.lineup && !config?.body) || event.button > 0) return;
+                pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, moved: false, drag: !!config.body };
+                if (pointer.drag) { try { renderer.domElement.setPointerCapture(event.pointerId); } catch { /* Already released. */ } event.preventDefault(); }
+            }
+            function onPointerMove(event) {
+                if (!pointer || event.pointerId !== pointer.id) return;
+                if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > TAP_PX) pointer.moved = true;
+                if (pointer.drag && config?.body) {
+                    // The surface follows the finger: one sphere radius of movement turns the planet by about one radian.
+                    const radius = Math.max(40, Math.min(innerWidth, innerHeight) * 0.3);
+                    turn((event.clientX - pointer.lastX) / radius, (event.clientY - pointer.lastY) / radius);
+                    event.preventDefault();
+                }
+                pointer.lastX = event.clientX; pointer.lastY = event.clientY;
+            }
+            function onPointerUp(event) {
+                if (!pointer || event.pointerId !== pointer.id) return;
+                const tap = !pointer.moved && !pointer.drag;
+                endDrag();
+                const id = tap ? pick(event.clientX, event.clientY) : null;
+                if (id) configure({ body: id });
+            }
+            function endDrag() {
+                try { if (pointer && renderer.domElement.hasPointerCapture(pointer.id)) renderer.domElement.releasePointerCapture(pointer.id); } catch { /* Already released. */ }
+                pointer = null;
+            }
+            const POINTER_EVENTS = [['pointerdown', onPointerDown], ['pointermove', onPointerMove], ['pointerup', onPointerUp], ['pointercancel', endDrag], ['lostpointercapture', endDrag]];
+            function listen(on) {
+                POINTER_EVENTS.forEach(([type, handler]) => renderer.domElement[on ? 'addEventListener' : 'removeEventListener'](type, handler));
+                window[on ? 'addEventListener' : 'removeEventListener']('blur', endDrag);
+                window[on ? 'addEventListener' : 'removeEventListener']('resize', endDrag);
+                // No browser panning or zooming on the canvas while it hosts the stage; the original value comes back afterwards.
+                if (on) { savedTouchAction = renderer.domElement.style.touchAction; renderer.domElement.style.touchAction = 'none'; }
+                else if (savedTouchAction !== null) { renderer.domElement.style.touchAction = savedTouchAction; savedTouchAction = null; }
             }
             // Thin flat rings (WebGL ignores line widths) for the five orbits and one translucent band for the estimate range,
             // drawn over Betelgeuse; materials made once, geometry rebuilt only when the layout changes.
@@ -2817,7 +2916,8 @@
             function state() {
                 if (!saved) return { active: false, busy: false };
                 return { active: true, busy: !!transition || reveal !== null || !!orbitFade, body: config?.body ?? null, lineup: config?.lineup ?? null, pair: config?.pair ? [...config.pair] : null,
-                    reference: !!config?.reference, references: references.length, orbits: config?.orbits ?? null };
+                    reference: !!config?.reference, references: references.length, orbits: config?.orbits ?? null,
+                    inspect: config?.body ? { yaw: inspectYaw, pitch: inspectPitch, limit: INSPECT_PITCH } : null };
             }
             function publish() { if (notify) notify(); }
             function begin(next, onChange) {
@@ -2829,12 +2929,13 @@
                 if (areOrbitsActive) toggleOrbit();
                 cancelCameraTransition(); controls.enabled = false; planetLabels.sync(); // Labels are ineligible while active.
                 document.body.classList.add('is-comparison'); syncNavigationPresentation();
-                notify = onChange;
+                notify = onChange; listen(true);
                 if (!configure(next)) { end(); return false; }
                 return true;
             }
             function end() {
                 if (!saved) return;
+                endDrag(); listen(false);
                 clear();
                 controls.enabled = saved.controls;
                 if (areOrbitsActive !== saved.playing) toggleOrbit();
@@ -2852,7 +2953,7 @@
                 renderer.render(stage.scene, orthographic(config) ? stage.lineupCamera : stage.camera);
                 return true;
             }
-            return { begin, configure, end, update, render, state, get active() { return !!saved; } };
+            return { begin, configure, end, update, render, state, turn, pick, get active() { return !!saved; } };
         })();
 
         // One Learn body map. Lesson IDs resolve to existing scene bodies only.
