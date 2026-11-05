@@ -318,7 +318,8 @@ window.Learn = (() => {
     if (!active || !lesson) return;
     const current = lesson.steps[step];
     const demo = stepDemo(current);
-    if (!demo && !sizeComparison(current)) return;
+    // Steps without a demonstration start only stage experiments (size comparison; Phase 6H.2: any registered stage kind).
+    if (!demo && !(current.type === 'experiment' && stageKind(current.experiment.kind))) return;
     Object.values(adapter.experiments).forEach(experiment => experiment.end());
     if (demo) adapter.demonstrate(demo);
     if (current.type === 'experiment') {
