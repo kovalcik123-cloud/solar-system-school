@@ -430,3 +430,9 @@ body.is-light-stage #learn-root.learn-panel[data-layout="side"] { bottom: calc(1
 #light-stage-overlay .light-time.is-countdown { color: #8bd8ff; }
 @media (max-width: 700px) and (min-height: 521px) { #learn-root.is-light-experiment .learn-light-lead { font-size: 16px; } }
 #light-stage-overlay .light-time.is-compact { transform: none; font-size: 17px; }
+/* Phase 6H.4.1: 15-second journey – ruler numbers (Earth–Moon units) under the path, time milestones above it. */
+#light-stage-overlay .light-ruler { transform: translateX(-50%); font-size: 12px; color: #a8bacd; font-variant-numeric: tabular-nums; }
+#light-stage-overlay .light-ruler.is-end { color: #c3d2de; font-weight: 600; }
+#light-stage-overlay .light-mile { transform: translateX(-50%); font-size: 12px; color: #6f8aa3; font-variant-numeric: tabular-nums; }
+#light-stage-overlay .light-mile.is-reached { color: #ffe08a; font-weight: 700; }
+#light-stage-overlay .light-scale.is-end span { left: auto; right: 0; } /* 15 s: label ends at the bar's end (Phase 6H.4.1a) */

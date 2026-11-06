@@ -487,6 +487,13 @@ window.Learn = (() => {
   // Light experiment panel (Phase 6H.3.2). The stage state is the only record of the experiment; the panel explains it and
   // announces only the start, a pause, the 1 s result and the arrival (never during the run).
   function lightCopy(state, tight = false) {
+    // The 15-second journey (Phase 6H.4.1): scene foundation only; its prediction and result feedback come in Phase 6H.4.2.
+    if (state.journey === 'fifteen') {
+      if (state.phase === 'countdown') return { lines: ['Pozor… svetlo vyrazí o chvíľu.'] };
+      if (state.phase === 'first') return { lines: state.paused ? ['Experiment je pozastavený.', ...(state.pauseReason === 'hidden' ? ['Zastavili sme ho, keď si odišiel zo stránky.'] : [])] : ['Svetlo letí…'] };
+      if (state.phase === 'done') return { lead: 'Uplynulo presne 15 sekúnd.', lines: [] };
+      return { lead: 'Teraz sa pozrieme oveľa ďalej.', lines: [state.interrupted ? 'Odpočítavanie sme zastavili, keď si odišiel zo stránky. Svetlo vyšleš znova tlačidlom.' : 'Zem a Mesiac budú vyzerať menšie, pretože vidíme omnoho väčšiu vzdialenosť.'] };
+    }
     const tip = state.prediction, near = km => LightData.formatKm(Math.round(km / 1000) * 1000);
     const travelled = LightData.lightDistanceKm(1), remaining = LightData.earthMoonProgress(1).remainingKm;
     const roundedTravel = Math.round(travelled / 1000) * 1000, roundedRemaining = Math.round(remaining / 500) * 500;
@@ -514,9 +521,10 @@ window.Learn = (() => {
   function holdLight(ui) {
     if (ui.held || ui.box.offsetHeight <= 2) return;
     ui.held = true; ui.output.textContent = 'Ešte si netipol'; // the tip row as it will read
-    const samples = [{ phase: 'ready', prediction: null }, { phase: 'one-second', prediction: { verdict: 'shorter', km: 376000 } }, { phase: 'arrived', seconds: LightData.earthMoonTravelSeconds() }];
+    const samples = ui.journey === 'fifteen' ? [{ journey: 'fifteen', phase: 'ready' }, { journey: 'fifteen', phase: 'done' }]
+      : [{ phase: 'ready', prediction: null }, { phase: 'one-second', prediction: { verdict: 'shorter', km: 376000 } }, { phase: 'arrived', seconds: LightData.earthMoonTravelSeconds() }];
     const heights = samples.map(sample => {
-      fillLight(ui, lightCopy(sample, ui.tight)); ui.pick.hidden = sample.phase !== 'ready'; ui.secondary.hidden = sample.phase !== 'one-second';
+      fillLight(ui, lightCopy(sample, ui.tight)); ui.pick.hidden = sample.phase !== 'ready' || ui.journey === 'fifteen'; ui.secondary.hidden = sample.phase !== 'one-second';
       ui.skip.hidden = !(reducedMotion.matches && sample.phase !== 'arrived');
       return ui.box.getBoundingClientRect().height;
     });
@@ -525,6 +533,7 @@ window.Learn = (() => {
   // The explanation area ("Vysvetlenie"): the exact values behind the short result and the learner's tip in kilometres.
   function lightDetail(state) {
     const em = LightData.earthMoon, tip = state.prediction;
+    if (state.journey === 'fifteen') return [`Jeden dielik pravítka je priemerná vzdialenosť stredov Zeme a Mesiaca: ${LightData.formatKm(em.centerKm)}. Prerušovaný kruh okolo Zeme je priemerná dráha Mesiaca, nie jeho presná poloha.`];
     const science = `Svetlo prejde za 1 sekundu presne ${LightData.formatKm(LightData.lightDistanceKm(1), 3)}. Od povrchu Zeme k povrchu Mesiaca je to v priemere ${LightData.formatKm(em.surfaceKm, 1)} `
       + `(stred Zeme – stred Mesiaca ${LightData.formatKm(em.centerKm)}), preto svetlu cesta trvá približne ${lightNumber(LightData.earthMoonTravelSeconds(), 2)} sekundy. Po 1 sekunde mu zostáva ${LightData.formatKm(LightData.earthMoonProgress(1).remainingKm, 3)}.`;
     return tip ? [science, `Tvoj tip: približne ${LightData.formatKm(Math.round(tip.km / 1000) * 1000)} od Zeme. Za „blízko“ považujeme tip do ${LightData.formatKm(Math.round(tip.toleranceKm / 1000) * 1000)} od skutočnej polohy svetla po 1 sekunde.`] : [science];
@@ -538,10 +547,10 @@ window.Learn = (() => {
     if (ui.copyKey !== key) { ui.copyKey = key; fillLight(ui, copy); }
     // The stage follows the learner's prediction (it is kept in Learn across repeats and step re-entry).
     const wanted = lightTip === null ? null : lightTip / 100;
-    if ((state.prediction?.fraction ?? null) !== wanted) experimentOf(lesson.steps[step]).setPrediction(wanted);
+    if (ui.journey !== 'fifteen' && (state.prediction?.fraction ?? null) !== wanted) experimentOf(lesson.steps[step]).setPrediction(wanted);
     const ready = state.phase === 'ready', running = state.phase === 'first' || state.phase === 'second';
     ui.slider.disabled = !ready;
-    ui.pick.hidden = !ready; // after the start the tip stays visible on the route (and in the result text)
+    ui.pick.hidden = !ready || ui.journey === 'fifteen'; // after the start the tip stays visible on the route; 15 s: no slider
     if (ui.slider.disabled && ui.pick.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
     const tipKm = lightTip === null ? null : LightData.formatKm(Math.round(lightTip / 100 * LightData.earthMoon.surfaceKm / 1000) * 1000);
     const tipText = tipKm === null ? 'Ešte si netipol' : `Môj tip: ≈ ${tipKm}`;
@@ -551,7 +560,7 @@ window.Learn = (() => {
     const height = ui.box.getBoundingClientRect().height;
     if (ui.held && height > parseFloat(ui.box.style.minHeight || '0') + 0.01) ui.box.style.minHeight = `${height}px`;
     ui.primary.textContent = state.phase === 'countdown' ? (state.countdown ? `Pozor… ${state.countdown}` : 'Pozor…') : running ? (state.paused ? 'Pokračovať' : 'Pozastaviť')
-      : state.phase === 'one-second' ? 'Pokračovať k Mesiacu' : state.phase === 'arrived' ? 'Opakovať pokus' : 'Vyšli svetlo';
+      : state.phase === 'one-second' ? 'Pokračovať k Mesiacu' : state.phase === 'arrived' || state.phase === 'done' ? 'Opakovať pokus' : 'Vyšli svetlo';
     setAvailability(ui.primary, false, state.phase === 'countdown'); // aria-disabled: a second click cannot cancel or restart
     ui.secondary.textContent = state.phase === 'countdown' ? 'Zrušiť' : 'Začať odznova';
     ui.secondary.hidden = !(state.phase === 'countdown' || (running && state.paused) || state.phase === 'one-second');
@@ -567,8 +576,8 @@ window.Learn = (() => {
       else if (moment === 'running' && previous === 'countdown') announce('Svetlo vyrazilo.');
       else if (moment === 'running' && previous === 'paused') announce('Pokračujeme.');
       else if (moment === 'paused') announce(copy.lines.join(' '));
-      else if (moment === 'one-second' || moment === 'arrived') { const full = lightCopy(state, false); announce([full.lead, ...full.lines].join(' ')); } // full text for screen readers
-      else if (moment === 'ready' && previous && previous !== 'ready') announce(state.interrupted ? copy.lines[0] : 'Pokus je pripravený. Môžeš zmeniť svoj tip.');
+      else if (moment === 'one-second' || moment === 'arrived' || moment === 'done') { const full = lightCopy(state, false); announce([full.lead, ...full.lines].join(' ')); } // full text for screen readers
+      else if (moment === 'ready' && previous && previous !== 'ready') announce(state.interrupted ? copy.lines[0] : ui.journey === 'fifteen' ? 'Pokus je pripravený.' : 'Pokus je pripravený. Môžeš zmeniť svoj tip.');
     }
   }
   function lightAction(action) {
@@ -581,7 +590,7 @@ window.Learn = (() => {
     else if (state.phase === 'ready') stage.start();
     else if (state.phase === 'first' || state.phase === 'second') { if (state.paused) stage.resume(); else stage.pause(); }
     else if (state.phase === 'one-second') stage.toMoon();
-    else if (state.phase === 'arrived') stage.reset();
+    else if (state.phase === 'arrived' || state.phase === 'done') stage.reset();
     syncExperiment();
   }
   function turnPlanet(yaw, pitch) {
@@ -833,7 +842,7 @@ window.Learn = (() => {
         const actions = el('div', null, 'learn-experiment-actions'); actions.append(primary, secondary, skip);
         // Order: headline, slider (ready only), actions, then the explanation, so the main action never drops below the fold.
         const box = el('div', null, 'learn-light-box'); box.append(lead, pick, actions, message);
-        experimentUI = { kind: 'light-travel', box, lead, message, pick, slider, output, primary, secondary, skip, tight: compactExperiment || root.dataset.layout === 'side' };
+        experimentUI = { kind: 'light-travel', journey: s.experiment.journey === 'fifteen' ? 'fifteen' : 'earth-moon', box, lead, message, pick, slider, output, primary, secondary, skip, tight: compactExperiment || root.dataset.layout === 'side' };
         const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
         details.hidden = compactExperiment && !experimentDetailsOpen;
         if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
