@@ -2974,6 +2974,13 @@
             let phase = 'ready', offsetSeconds = 0, countdownStart = 0, countdownLeft = 0, interrupted = false, skipped = false, prediction = null;
             // Journeys: 'earth-moon' (default; 1 s stop, then on to the Moon) or 'fifteen' (one 15 s run: ready → countdown → first → done).
             let journey = 'earth-moon';
+            // Milky Way backdrop (Phase 6H.4.3): the main scene's own stars.jpg texture on one static plane behind both journeys.
+            // The source image is very dark (median pixel black, the band itself about 2 % luminance), so a plain colour multiplier
+            // cannot show it. A small tone curve on this plane's own material: visible value v → min(1, brightness · v^lift).
+            // brightness: visible (sRGB) gain, 0 = the original solid background, 1 = the image as published; lift < 1 raises the
+            // faint band more than the already bright stars. offset moves the band by a fraction of the view height (negative = lower).
+            // Development and test configuration only (setBackground); no user setting.
+            let backdrop = { brightness: 1.5, lift: 1, offset: 0 }; // approved medium variant (1.5× source brightness, Phase 6H.4.3.D)
             const FIFTEEN_S = 15, MILESTONES = Object.freeze([1, 5, 10, 15]), RULER_LABELS = Object.freeze([1, 5, 10]);
             const COUNTDOWN_MS = 3000, BEAM_PX = 2.5, HEAD_PX = 7, GLOW_PX = Object.freeze([46, 14]), RING_PX = 18, RING_BELOW_PX = 16, GAP_PX = 1.5, TIP_PX = Object.freeze([2, 20]);
             // A prediction counts as close within 10 % of the Earth–Moon surface route (about 37 600 km either side of the 1 s point).
@@ -2994,6 +3001,11 @@
                     units: LightData.inEarthMoonDistances(LightData.lightDistanceKm(FIFTEEN_S)) };
             }
             const geo = () => journey === 'fifteen' ? stage.g15 : stage.g;
+            // The main scene's Milky Way sky (the stars.jpg sphere): shared, never loaded twice and never disposed here.
+            function skyMap() {
+                const sky = scene.children.find(o => o.isMesh && o.geometry?.parameters?.radius === 5000 && o.material?.side === THREE.BackSide);
+                return sky?.material.map ?? null;
+            }
             // The main scene's own textures (already loaded): never loaded twice and never disposed here.
             function mainMap(name) {
                 const mesh = name === 'Zem' ? planets.find(p => p.userData.name === name) : satellites.find(m => m.userData.name === name);
@@ -3016,6 +3028,16 @@
             function build() {
                 if (stage) return;
                 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x000005);
+                // The backdrop: one plane far behind everything, drawn first, depth neither tested nor written; hidden until its map is known.
+                const tone = { skyGain: { value: 1 }, skyLift: { value: 1 } }, skyMaterial = new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false });
+                skyMaterial.onBeforeCompile = shader => { // texel is linear here (sRGB decoded); curve in visible (≈ gamma 2.2) terms, then back
+                    Object.assign(shader.uniforms, tone);
+                    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float skyGain;\nuniform float skyLift;')
+                        .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb = pow(min(vec3(1.0), skyGain * pow(max(diffuseColor.rgb, vec3(0.0)), vec3(skyLift / 2.2))), vec3(2.2));');
+                };
+                skyMaterial.customProgramCacheKey = () => 'light-sky-tone';
+                const sky = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), skyMaterial);
+                sky.position.z = -90; sky.renderOrder = -1; sky.visible = false; scene.add(sky);
                 const key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(-0.35, 0.45, 1); // camera side: readable, no phase
                 scene.add(new THREE.AmbientLight(0xffffff, 0.4), key);
                 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 200); camera.position.z = 100;
@@ -3060,7 +3082,7 @@
                 const mileLabels = MILESTONES.map(seconds => ({ seconds, km: LightData.lightDistanceKm(seconds), el: part('light-mile', `${seconds} s`) }));
                 [...rulerLabels, ...mileLabels].forEach(item => { item.el.hidden = true; });
                 document.body.append(overlay);
-                stage = { scene, camera, earth, moon, route, gap, tip, beam, glow, head, rings, labels, scale, time, distance, tipLabel, note, g,
+                stage = { scene, camera, sky, tone, earth, moon, route, gap, tip, beam, glow, head, rings, labels, scale, time, distance, tipLabel, note, g,
                     g15, fifteen, ruler, unitTicks, endTick, mileTicks, orbit, rulerLabels, mileLabels };
             }
             // Usable area between the planet bar and the Learn panel (the same rule as the comparison stage).
@@ -3085,6 +3107,11 @@
                 const left = g.left - (box.left + margin) * perPx, top = y * perPx;
                 Object.assign(stage.camera, { left, right: left + innerWidth * perPx, top, bottom: top - innerHeight * perPx });
                 stage.camera.updateProjectionMatrix();
+                // Backdrop: the 2:1 panorama covers the whole view (cover fit), centred on the Milky Way core; static.
+                const viewW = innerWidth * perPx, viewH = innerHeight * perPx;
+                const coverH = Math.max(viewH * (1 + 2 * Math.abs(backdrop.offset)), viewW / 2); // 2:1 panorama, still covering when shifted
+                stage.sky.scale.set(2 * coverH, coverH, 1);
+                stage.sky.position.set(left + viewW / 2, top - viewH / 2 + backdrop.offset * viewH, -90);
                 const sx = x => box.left + margin + (x - g.left) / perPx, px = v => v * perPx;
                 stage.route.material.dashSize = px(4); stage.route.material.gapSize = px(5);
                 const sizes = { earth: 2 * g.earthR / perPx, moon: far ? 0 : 2 * g.moonR / perPx };
@@ -3189,6 +3216,10 @@
                 if (stage.time.textContent !== shown) stage.time.textContent = shown;
                 stage.time.classList.toggle('is-countdown', counting);
                 if (stage.distance.textContent !== distance) stage.distance.textContent = distance;
+                const map = backdrop.brightness > 0 ? skyMap() : null; // shared with the main scene's sky sphere
+                if (stage.sky.material.map !== map) { stage.sky.material.map = map; stage.sky.material.needsUpdate = true; }
+                stage.sky.visible = !!map;
+                stage.tone.skyGain.value = backdrop.brightness; stage.tone.skyLift.value = backdrop.lift; // uniforms only, no recompile
                 for (const [mesh, name] of [[stage.earth, 'Zem'], [stage.moon, 'Mesiac']]) { // textures may load after build
                     const map = mainMap(name);
                     if (map && mesh.material.map !== map) { mesh.material.map = map; mesh.material.color.set(0xffffff); mesh.material.needsUpdate = true; }
@@ -3245,6 +3276,12 @@
             }
             const pass = name => () => { if (!saved || !run || !['first', 'second'].includes(phase)) return false; const done = run[name](); if (done) publish(); return done; };
             function reset() { if (!saved) return false; return configure({ journey }); }
+            // Development and test hook for the backdrop A/B comparison (Phase 6H.4.3); not reachable from the user interface.
+            function setBackground(next = {}) {
+                const brightness = next.brightness ?? backdrop.brightness, lift = next.lift ?? backdrop.lift, offset = next.offset ?? backdrop.offset;
+                if (!(Number.isFinite(brightness) && brightness >= 0 && brightness <= 4 && Number.isFinite(lift) && lift >= 0.5 && lift <= 1 && Number.isFinite(offset) && Math.abs(offset) <= 0.5)) return false;
+                backdrop = { brightness, lift, offset }; frameKey = ''; return true;
+            }
             function setPrediction(value) {
                 if (value !== null && !(typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1)) return false;
                 if (prediction === value) return true;
@@ -3313,7 +3350,7 @@
                 return { active: true, journey, phase, run: shot?.state ?? null, paused: shot?.state === 'paused', pauseReason: shot?.pauseReason ?? null, countdown: phase === 'countdown' ? countdownLeft : 0,
                     interrupted, skipped, seconds, travelledKm: km, remainingKm: Math.max(0, em.surfaceKm - km), arrived: phase === 'arrived', prediction: tip, world: { ...g }, view };
             }
-            return { begin, configure, end, update, render, state, start, toMoon, skip, setPrediction, pause: pass('pause'), resume: pass('resume'), reset, get active() { return !!saved; } };
+            return { begin, configure, end, update, render, state, start, toMoon, skip, setPrediction, setBackground, get background() { return { ...backdrop, shown: !!stage?.sky.visible, map: stage?.sky.material.map ?? null }; }, pause: pass('pause'), resume: pass('resume'), reset, get active() { return !!saved; } };
         })();
 
         // One Learn body map. Lesson IDs resolve to existing scene bodies only.

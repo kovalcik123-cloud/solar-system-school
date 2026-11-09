@@ -401,6 +401,7 @@ body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12
 
 /* Phase 6H.3.1: Earth–Moon light scene – labels, readouts and scale bar over the light stage (visual only; aria-hidden). */
 #light-stage-overlay { position: fixed; inset: 0; z-index: 20; pointer-events: none; color: #c3d2de; line-height: 1.25; }
+#light-stage-overlay > div { text-shadow: 0 0 2px #000, 0 0 6px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 0, 0, 0.6); } /* dark halo: labels stay readable over the Milky Way backdrop (Phase 6H.4.3) */
 #light-stage-overlay[hidden], #light-stage-overlay [hidden] { display: none; }
 #light-stage-overlay > div { position: absolute; white-space: nowrap; }
 #light-stage-overlay .light-label { transform: translateX(-50%); font-size: 14px; font-weight: 600; color: #e8f2fa; }
