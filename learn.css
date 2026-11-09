@@ -436,3 +436,16 @@ body.is-light-stage #learn-root.learn-panel[data-layout="side"] { bottom: calc(1
 #light-stage-overlay .light-mile { transform: translateX(-50%); font-size: 12px; color: #6f8aa3; font-variant-numeric: tabular-nums; }
 #light-stage-overlay .light-mile.is-reached { color: #ffe08a; font-weight: 700; }
 #light-stage-overlay .light-scale.is-end span { left: auto; right: 0; } /* 15 s: label ends at the bar's end (Phase 6H.4.1a) */
+/* Phase 6H.4.2: the 15-second guess – three answer buttons in one row (existing answer styling, compact for phones). */
+.learn-light-choices { display: flex; gap: 6px; margin: 0 0 8px; padding: 0; border: 0; min-width: 0; }
+.learn-light-choices[hidden] { display: none; }
+.learn-light-choices .learn-answer { flex: 1 1 0; min-width: 0; min-height: 44px; margin: 0; padding: 4px 6px; justify-content: center; text-align: center; cursor: pointer; }
+.learn-light-choices .learn-answer-text { font-size: 15px; line-height: 1.15; }
+.learn-light-choices .learn-answer.is-selected .learn-answer-text { font-weight: 700; color: #e8f2fa; } /* not colour alone */
+.learn-light-choices .learn-answer:has(input:disabled) { cursor: default; }
+.learn-light-choices .learn-answer:has(input:disabled):not(.is-selected) { opacity: .6; }
+/* 15 s panel on phones and in the short-landscape side panel: compact text so the result and the main action fit. */
+@media (max-width: 700px) and (min-height: 521px) { .learn-light-box:has(.learn-light-choices) .learn-light-message p { font-size: 15px; } }
+#learn-root[data-layout="side"] .learn-light-box:has(.learn-light-choices) .learn-light-lead { font-size: 15px; }
+#learn-root[data-layout="side"] .learn-light-box:has(.learn-light-choices) .learn-light-message p { font-size: 15px; }
+#learn-root[data-layout="side"] .learn-light-choices .learn-answer-text { font-size: 13px; }

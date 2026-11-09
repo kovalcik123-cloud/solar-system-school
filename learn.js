@@ -33,6 +33,10 @@ window.Learn = (() => {
   // choice) lives for the lesson session, so a repeated run keeps it for comparison. It never changes the simulation.
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let lightTip = null;
+  // 15-second journey (Phase 6H.4.2): the learner's guess of how many Earth–Moon distances light covers (3, 12 or 100), or null.
+  // Kept for the lesson session like the tip; it never reaches the stage (physics, camera and ruler are unaffected).
+  const LIGHT_CHOICES = Object.freeze([3, 12, 100]);
+  let lightChoice = null;
   const lightNumber = (value, digits) => new Intl.NumberFormat('sk-SK', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
   // The comparison the size-comparison experiment offers (Phase 6G.3); the stage accepts any planet pair.
   const COMPARISON_PAIR = Object.freeze(['jupiter', 'earth']);
@@ -308,7 +312,7 @@ window.Learn = (() => {
   function start(id) {
     if (!active) return;
     const found = data.lessons.find(l => l.id === id); if (!found) return;
-    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; tourReading = false; viewReading = false; lightTip = null; render();
+    cleanup(); snapshot = adapter.snapshot(); lesson = found; step = 0; expanded = true; tourReading = false; viewReading = false; lightTip = null; lightChoice = null; render();
   }
   function move(index, stopIndex = 0) {
     if (!active || !lesson || index < 0 || index >= lesson.steps.length) return;
@@ -489,10 +493,21 @@ window.Learn = (() => {
   function lightCopy(state, tight = false) {
     // The 15-second journey (Phase 6H.4.1): scene foundation only; its prediction and result feedback come in Phase 6H.4.2.
     if (state.journey === 'fifteen') {
-      if (state.phase === 'countdown') return { lines: ['Pozor… svetlo vyrazí o chvíľu.'] };
-      if (state.phase === 'first') return { lines: state.paused ? ['Experiment je pozastavený.', ...(state.pauseReason === 'hidden' ? ['Zastavili sme ho, keď si odišiel zo stránky.'] : [])] : ['Svetlo letí…'] };
-      if (state.phase === 'done') return { lead: 'Uplynulo presne 15 sekúnd.', lines: [] };
-      return { lead: 'Teraz sa pozrieme oveľa ďalej.', lines: [state.interrupted ? 'Odpočítavanie sme zastavili, keď si odišiel zo stránky. Svetlo vyšleš znova tlačidlom.' : 'Zem a Mesiac budú vyzerať menšie, pretože vidíme omnoho väčšiu vzdialenosť.'] };
+      // Compact and side panels show the guess as a short line once the experiment starts (the row of choices is hidden there).
+      const guess = tight && state.choice != null ? [`Tvoj odhad: asi ${state.choice}-krát.`] : [];
+      if (state.phase === 'countdown') return { lines: ['Pozor… svetlo vyrazí o chvíľu.', ...guess] };
+      if (state.phase === 'first') return { lines: [...(state.paused ? ['Experiment je pozastavený.', ...(state.pauseReason === 'hidden' ? ['Zastavili sme ho, keď si odišiel zo stránky.'] : [])] : ['Svetlo letí…']), ...guess] };
+      if (state.phase === 'done') {
+        // Rounded child-facing numbers from LightData ("takmer" when the rounded value is above the exact one).
+        const km = LightData.lightDistanceKm(15), millions = Math.round(km / 1e5) / 10, units = LightData.inEarthMoonDistances(km), times = Math.round(units);
+        const about = (rounded, exact) => rounded > exact ? 'takmer' : 'približne';
+        const choice = state.choice ?? null, nearest = LIGHT_CHOICES.reduce((a, b) => Math.abs(b - units) < Math.abs(a - units) ? b : a);
+        const feedback = choice === null ? 'Nabudúce si najprv tipni, koľkokrát to bude.' : choice === nearest ? 'Správny odhad!' : choice < nearest ? 'Svetlo doletelo ďalej, než si odhadol.' : 'Svetlo nedoletelo tak ďaleko, ako si odhadol.';
+        const lead = `Za 15 sekúnd svetlo preletelo ${about(millions * 1e6, km)} ${lightNumber(millions, 1)} milióna kilometrov!`, times12 = `To je ${about(times, units)} ${times}-krát vzdialenosť Zem–Mesiac.`;
+        // Compact and side panels: the same sentences in one paragraph, so the result fits the ready state's height.
+        return tight ? { lead, lines: [`${times12} ${feedback}`] } : { lead, lines: [times12, feedback] };
+      }
+      return { lead: 'Koľkokrát by svetlo za 15 sekúnd preletelo vzdialenosť Zem–Mesiac?', lines: state.interrupted ? ['Odpočítavanie sme zastavili, keď si odišiel zo stránky. Svetlo vyšleš znova tlačidlom.'] : tight ? [] : ['Zem a Mesiac budú vyzerať menšie, pretože vidíme omnoho väčšiu vzdialenosť.'] };
     }
     const tip = state.prediction, near = km => LightData.formatKm(Math.round(km / 1000) * 1000);
     const travelled = LightData.lightDistanceKm(1), remaining = LightData.earthMoonProgress(1).remainingKm;
@@ -521,10 +536,11 @@ window.Learn = (() => {
   function holdLight(ui) {
     if (ui.held || ui.box.offsetHeight <= 2) return;
     ui.held = true; ui.output.textContent = 'Ešte si netipol'; // the tip row as it will read
-    const samples = ui.journey === 'fifteen' ? [{ journey: 'fifteen', phase: 'ready' }, { journey: 'fifteen', phase: 'done' }]
+    const samples = ui.journey === 'fifteen' ? [{ journey: 'fifteen', phase: 'ready' }, { journey: 'fifteen', phase: 'done', choice: 100 }, { journey: 'fifteen', phase: 'first', choice: 100 }]
       : [{ phase: 'ready', prediction: null }, { phase: 'one-second', prediction: { verdict: 'shorter', km: 376000 } }, { phase: 'arrived', seconds: LightData.earthMoonTravelSeconds() }];
     const heights = samples.map(sample => {
       fillLight(ui, lightCopy(sample, ui.tight)); ui.pick.hidden = sample.phase !== 'ready' || ui.journey === 'fifteen'; ui.secondary.hidden = sample.phase !== 'one-second';
+      if (ui.choices) ui.choices.hidden = ui.tight && sample.phase !== 'ready';
       ui.skip.hidden = !(reducedMotion.matches && sample.phase !== 'arrived');
       return ui.box.getBoundingClientRect().height;
     });
@@ -533,13 +549,21 @@ window.Learn = (() => {
   // The explanation area ("Vysvetlenie"): the exact values behind the short result and the learner's tip in kilometres.
   function lightDetail(state) {
     const em = LightData.earthMoon, tip = state.prediction;
-    if (state.journey === 'fifteen') return [`Jeden dielik pravítka je priemerná vzdialenosť stredov Zeme a Mesiaca: ${LightData.formatKm(em.centerKm)}. Prerušovaný kruh okolo Zeme je priemerná dráha Mesiaca, nie jeho presná poloha.`];
+    if (state.journey === 'fifteen') {
+      const ruler = `Jeden dielik pravítka je priemerná vzdialenosť stredov Zeme a Mesiaca: ${LightData.formatKm(em.centerKm)}. Prerušovaný kruh okolo Zeme je priemerná dráha Mesiaca, nie jeho presná poloha.`;
+      const scale = 'Teraz sa pozeráme oveľa ďalej ako v prvom pokuse, preto Zem a Mesiac vyzerajú menšie.';
+      const guess = state.choice != null && state.phase !== 'ready' ? [`Tvoj odhad: asi ${state.choice}-krát.`] : [];
+      if (state.phase !== 'done') return [...guess, scale, ruler]; // the exact result appears only after the 15 seconds
+      const km = LightData.lightDistanceKm(15);
+      return [`Svetlo prejde za 15 sekúnd presne ${LightData.formatKm(km, 2)}. To je ${lightNumber(LightData.inEarthMoonDistances(km), 2)} × ${LightData.formatKm(em.centerKm)}.`, ...guess, scale, ruler];
+    }
     const science = `Svetlo prejde za 1 sekundu presne ${LightData.formatKm(LightData.lightDistanceKm(1), 3)}. Od povrchu Zeme k povrchu Mesiaca je to v priemere ${LightData.formatKm(em.surfaceKm, 1)} `
       + `(stred Zeme – stred Mesiaca ${LightData.formatKm(em.centerKm)}), preto svetlu cesta trvá približne ${lightNumber(LightData.earthMoonTravelSeconds(), 2)} sekundy. Po 1 sekunde mu zostáva ${LightData.formatKm(LightData.earthMoonProgress(1).remainingKm, 3)}.`;
     return tip ? [science, `Tvoj tip: približne ${LightData.formatKm(Math.round(tip.km / 1000) * 1000)} od Zeme. Za „blízko“ považujeme tip do ${LightData.formatKm(Math.round(tip.toleranceKm / 1000) * 1000)} od skutočnej polohy svetla po 1 sekunde.`] : [science];
   }
   function syncLight(state) {
     const ui = experimentUI;
+    if (ui.journey === 'fifteen') state = { ...state, choice: lightChoice }; // the learner's guess, for the panel's words only
     holdLight(ui);
     const detail = lightDetail(state), detailKey = detail.join('|');
     if (ui.detailKey !== detailKey) { ui.detailKey = detailKey; ui.science.replaceChildren(...detail.map(text => el('p', text, 'learn-note'))); }
@@ -551,6 +575,11 @@ window.Learn = (() => {
     const ready = state.phase === 'ready', running = state.phase === 'first' || state.phase === 'second';
     ui.slider.disabled = !ready;
     ui.pick.hidden = !ready || ui.journey === 'fifteen'; // after the start the tip stays visible on the route; 15 s: no slider
+    if (ui.choices) { // 15 s: the guess stays visible, but can change only before the start
+      ui.choices.hidden = ui.tight && !ready; // compact panels: shown as the "Tvoj odhad" line instead
+      ui.choices.querySelectorAll('input').forEach(input => { input.disabled = !ready; input.checked = Number(input.value) === lightChoice; input.closest('label').classList.toggle('is-selected', input.checked); });
+      if (!ready && ui.choices.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
+    }
     if (ui.slider.disabled && ui.pick.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
     const tipKm = lightTip === null ? null : LightData.formatKm(Math.round(lightTip / 100 * LightData.earthMoon.surfaceKm / 1000) * 1000);
     const tipText = tipKm === null ? 'Ešte si netipol' : `Môj tip: ≈ ${tipKm}`;
@@ -840,9 +869,21 @@ window.Learn = (() => {
         primary.dataset.focus = 'light-primary'; secondary.dataset.focus = 'light-secondary'; skip.dataset.focus = 'light-skip';
         secondary.hidden = true; skip.hidden = true;
         const actions = el('div', null, 'learn-experiment-actions'); actions.append(primary, secondary, skip);
-        // Order: headline, slider (ready only), actions, then the explanation, so the main action never drops below the fold.
-        const box = el('div', null, 'learn-light-box'); box.append(lead, pick, actions, message);
-        experimentUI = { kind: 'light-travel', journey: s.experiment.journey === 'fifteen' ? 'fifteen' : 'earth-moon', box, lead, message, pick, slider, output, primary, secondary, skip, tight: compactExperiment || root.dataset.layout === 'side' };
+        // 15 s journey: three guesses as one row of native radio buttons (the existing answer styling); optional, never blocking.
+        let choices = null;
+        if (s.experiment.journey === 'fifteen') {
+          choices = el('fieldset', null, 'learn-light-choices'); choices.append(el('legend', 'Môj odhad', 'learn-visually-hidden'));
+          for (const value of LIGHT_CHOICES) {
+            // Native radio (arrow keys, "checked" for screen readers); its circle is hidden, the whole button shows the choice.
+            const label = el('label', null, 'learn-answer'), input = el('input', null, 'learn-visually-hidden'); input.type = 'radio'; input.name = 'learn-light-choice'; input.value = String(value);
+            input.addEventListener('change', () => { lightChoice = value; syncExperiment(); });
+            label.append(input, el('span', `Asi ${value}-krát`, 'learn-answer-text')); choices.append(label);
+          }
+        }
+        // Order: headline, slider or guesses (ready only for the slider), actions, then the explanation, so the main action never
+        // drops below the fold.
+        const box = el('div', null, 'learn-light-box'); box.append(lead, ...(choices ? [choices] : [pick]), actions, message);
+        experimentUI = { kind: 'light-travel', journey: s.experiment.journey === 'fifteen' ? 'fifteen' : 'earth-moon', box, lead, message, pick, choices, slider, output, primary, secondary, skip, tight: compactExperiment || root.dataset.layout === 'side' };
         const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
         details.hidden = compactExperiment && !experimentDetailsOpen;
         if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }

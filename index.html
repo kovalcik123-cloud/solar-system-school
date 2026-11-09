@@ -3111,13 +3111,20 @@
                 const compact = y + below + 30 + (roomy ? 50 : 34) + 22 > box.top + box.height;
                 // 15 s (Phase 6H.4.1a): on non-compact layouts the scale bar ends under the route's end, label right-aligned, clear of the
                 // centred readouts and of the orbit circle; compact rows keep it on the left before the readout.
-                const scaleTop = y + below + (compact ? 24 : 30), atEnd = far && !compact;
+                // 15 s in a short free area (Phase 6H.4.2): "Zem" beside Earth on the route's row, so the ruler numbers and the compact
+                // readout each move up one row and stay above the panel. Only labels move; the scene and its scale do not.
+                const farCompact = far && compact;
+                if (farCompact) {
+                    place(stage.labels.earth, sx(g.earthX) - Math.max(RING_PX, sizes.earth + 8) / 2 - 4 - stage.labels.earth.offsetWidth / 2, y - 9);
+                    stage.rulerLabels.forEach(item => place(item.el, sx(item.x), y + 12));
+                }
+                const scaleTop = farCompact ? y + 34 : y + below + (compact ? 24 : 30), atEnd = far && !compact;
                 const scaleLeft = atEnd ? sx(g.end) - scalePx : box.left + margin;
                 stage.scale.classList.toggle('is-end', atEnd);
                 place(stage.scale, scaleLeft, scaleTop - (atEnd ? 4 : 0)); stage.scale.style.width = `${scalePx.toFixed(1)}px`; // still below the ruler numbers
                 stage.time.classList.toggle('is-compact', compact); stage.distance.hidden = compact;
                 // The compact row starts after the wider of the scale bar and its label (1 000 000 km is wider than its bar on phones).
-                if (compact) place(stage.time, box.left + margin + Math.max(scalePx, stage.scale.lastChild.offsetWidth) + 18, y + below + 20);
+                if (compact) place(stage.time, box.left + margin + Math.max(scalePx, stage.scale.lastChild.offsetWidth) + 18, farCompact ? y + 30 : y + below + 20);
                 else { // 15 s: centred in the space left of the scale bar (Phase 6H.4.1a); Earth–Moon: centred in the free area
                     const cx = atEnd ? (box.left + margin + scaleLeft - 16) / 2 : box.left + box.width / 2;
                     place(stage.time, cx, y + below + 30); place(stage.distance, cx, y + below + 30 + (roomy ? 50 : 34));
@@ -3155,6 +3162,8 @@
                 stage.head.scale.setScalar(HEAD_PX * perPx); stage.head.position.set(x, 0, 15);
                 // Milestones: muted from the start, lit when the light (from LightSim) has reached their exact distance c × t.
                 if (far) stage.mileLabels.forEach((item, i) => { const reached = km >= item.km; item.el.classList.toggle('is-reached', reached); stage.mileTicks[i].material.color.set(reached ? 0xffe08a : 0x6f8aa3); });
+                // The ruler's end label ("11,7×") is the experiment's answer: shown only at the exact 15 s result (Phase 6H.4.2).
+                if (far) stage.rulerLabels[stage.rulerLabels.length - 1].el.hidden = phase !== 'done';
                 const showGap = phase === 'one-second';
                 stage.gap.visible = showGap;
                 if (showGap) { stage.gap.scale.set(Math.max(g.surface - x, 1e-9), GAP_PX * perPx, 1); stage.gap.position.set((x + g.surface) / 2, 0, 11); }
