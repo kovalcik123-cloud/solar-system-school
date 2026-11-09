@@ -92,7 +92,7 @@ test('reset returns to the initial state and allows exactly one new completion; 
   for (let cycle = 0; cycle < 50; cycle++) {
     assert.equal(run.reset(), true);
     const idle = run.snapshot();
-    assert.deepEqual({ ...idle }, { state: 'idle', mode: 'real-time', durationSeconds: 1, activeSeconds: 0, travelledKm: 0, remainingSeconds: 1, wallSeconds: 0, pauseReason: null, completed: false });
+    assert.deepEqual({ ...idle }, { state: 'idle', mode: 'real-time', timeScale: 1, durationSeconds: 1, activeSeconds: 0, simulatedSeconds: 0, travelledKm: 0, remainingSeconds: 1, wallSeconds: 0, pauseReason: null, completed: false });
     run.start(); clock.go(250); run.update(); if (cycle % 2) { run.pause(); clock.go(10); run.resume(); }
     clock.go(800); run.update();
     assert.equal(run.state, 'completed');
@@ -144,4 +144,107 @@ test('physical coordinates: fixed 1 world unit = 1 000 km; scene scale never cha
   for (const v of [NaN, Infinity, undefined, '3']) { assert.throws(() => S.kmToWorld(v), { name: 'TypeError' }); assert.throws(() => S.worldToKm(v), { name: 'TypeError' }); }
   assert.equal(S.kmToWorld(-0), 0);
   assert.ok(Object.isFrozen(S) && Object.isFrozen(S.STATES));
+});
+
+// Time acceleration (Phase 6H.5.1): timeScale changes playback only; light always moves at c in the model.
+test('timeScale: the default is 1× real time, identical to an explicit timeScale 1 (backward compatible)', () => {
+  const a = fakeClock(), b = fakeClock(), done = [];
+  const plain = S.createRun({ durationSeconds: 15, now: a.now }), one = S.createRun({ durationSeconds: 15, now: b.now, timeScale: 1, onComplete: s => done.push(s) });
+  const same = () => { const x = plain.update(), y = one.update(); assert.deepEqual(x, y); return x; };
+  plain.start(); one.start();
+  for (const ms of [16.7, 250, 0, 4000, 3.3]) { a.go(ms); b.go(ms); const shot = same(); assert.equal(shot.mode, 'real-time'); assert.equal(shot.timeScale, 1); assert.equal(shot.simulatedSeconds, shot.activeSeconds); assert.equal(shot.travelledKm, L.lightDistanceKm(shot.activeSeconds)); }
+  plain.pause(); one.pause(); a.go(9000); b.go(9000); same(); plain.resume(); one.resume();
+  a.go(20000); b.go(20000); const end = same();
+  assert.equal(end.state, 'completed'); assert.equal(end.activeSeconds, 15); assert.equal(end.simulatedSeconds, 15); assert.equal(end.travelledKm, L.lightDistanceKm(15)); assert.equal(done.length, 1);
+  assert.deepEqual(Object.keys(end).sort(), ['activeSeconds', 'completed', 'durationSeconds', 'mode', 'pauseReason', 'remainingSeconds', 'simulatedSeconds', 'state', 'timeScale', 'travelledKm', 'wallSeconds']);
+});
+
+test('timeScale 60× and 600×: physical time = playback time × scale; light still moves at c', () => {
+  for (const scale of [60, 600]) {
+    const clock = fakeClock(), run = S.createRun({ now: clock.now, timeScale: scale });
+    run.start();
+    for (const ms of [16.7, 33.3, 500, 1000]) {
+      clock.go(ms); const shot = run.update();
+      assert.equal(shot.mode, 'accelerated'); assert.equal(shot.timeScale, scale);
+      near(shot.simulatedSeconds, shot.activeSeconds * scale, 1e-15); near(shot.travelledKm / shot.simulatedSeconds, L.C_KM_PER_S, 1e-12);
+    }
+    near(run.snapshot().activeSeconds, 1.55, 1e-12); near(run.snapshot().simulatedSeconds, 1.55 * scale, 1e-12);
+  }
+  // 1 playback second at 600× is 10 physical minutes: 179 875 474,8 km.
+  const clock = fakeClock(), run = S.createRun({ now: clock.now, timeScale: 600 }); run.start(); clock.go(1000);
+  assert.equal(run.update().simulatedSeconds, 600); assert.equal(run.snapshot().travelledKm, L.lightDistanceKm(600));
+});
+
+test('timeScale: exact physical stop (planet light times), playback length = duration / scale, completion exactly once', () => {
+  for (const [scale, id] of [[60, 'mars'], [600, 'neptune'], [600, 'mercury'], [60, 'earth']]) {
+    const physical = L.sunToPlanet(id).lightSeconds, playbackMs = physical * 1000 / scale, clock = fakeClock(), done = [];
+    const run = S.createRun({ durationSeconds: physical, now: clock.now, timeScale: scale, onComplete: s => done.push(s) });
+    run.start();
+    clock.go(playbackMs - 1); let shot = run.update();
+    assert.equal(shot.state, 'running'); assert.ok(shot.simulatedSeconds < physical); near(shot.remainingSeconds, scale / 1000, 1e-9, 1e-9);
+    clock.go(1 + 41); shot = run.update(); // the frame after the end comes 41 ms late
+    assert.equal(shot.state, 'completed'); assert.equal(shot.simulatedSeconds, physical); assert.equal(shot.activeSeconds, physical / scale);
+    assert.equal(shot.travelledKm, L.sunToPlanet(id).distanceKm === L.lightDistanceKm(physical) ? L.sunToPlanet(id).distanceKm : L.lightDistanceKm(physical));
+    near(shot.travelledKm, L.sunToPlanet(id).distanceKm, 1e-12); assert.equal(shot.remainingSeconds, 0);
+    near(shot.wallSeconds, physical / scale, 1e-12); // ended at the real playback moment, not at the late frame
+    assert.equal(done.length, 1); assert.equal(done[0].simulatedSeconds, physical);
+    clock.go(60000); run.update(); run.update(); assert.equal(run.pause(), false);
+    assert.equal(run.snapshot().simulatedSeconds, physical); assert.equal(done.length, 1);
+  }
+});
+
+test('timeScale: never past the physical stop, even sampled between frames or with rounding', () => {
+  const physical = L.sunToPlanet('neptune').lightSeconds, clock = fakeClock(), run = S.createRun({ durationSeconds: physical, now: clock.now, timeScale: 600 });
+  run.start();
+  for (let i = 0; i < 400; i++) { clock.go(63.7); const shot = run.snapshot(); assert.ok(shot.simulatedSeconds <= physical); assert.ok(shot.travelledKm <= L.lightDistanceKm(physical)); assert.ok(shot.activeSeconds <= physical / 600); }
+});
+
+test('timeScale: pause/resume at 600× excludes paused time; repeated cycles do not drift', () => {
+  const clock = fakeClock(), run = S.createRun({ durationSeconds: L.sunToPlanet('neptune').lightSeconds, now: clock.now, timeScale: 600 });
+  run.start(); let played = 0;
+  for (let i = 0; i < 50; i++) {
+    clock.go(37); played += 37; assert.equal(run.pause(), true);
+    const held = run.snapshot(); clock.go(5000); assert.deepEqual(run.update(), held); // nothing moves while paused
+    assert.equal(run.resume(), true);
+  }
+  const shot = run.update(); near(shot.activeSeconds, played / 1000, 1e-12); near(shot.simulatedSeconds, played / 1000 * 600, 1e-12);
+  near(shot.wallSeconds, (played + 50 * 5000) / 1000, 1e-12); assert.equal(shot.state, 'running');
+});
+
+test('timeScale: frame drops and long stalls at 600× give exactly the elapsed playback time (no frame dependence)', () => {
+  const clock = fakeClock(), run = S.createRun({ now: clock.now, timeScale: 600 }); run.start();
+  let total = 0;
+  for (const ms of [16.7, 500, 0, 0.001, 2000, 8.3, 1000]) { clock.go(ms); total += ms; const shot = run.update(); near(shot.activeSeconds, total / 1000, 1e-12); near(shot.simulatedSeconds, total / 1000 * 600, 1e-12); }
+  // A stall past the stop completes at the exact physical end.
+  const physical = L.sunToPlanet('jupiter').lightSeconds, c2 = fakeClock(), done = [], r2 = S.createRun({ durationSeconds: physical, now: c2.now, timeScale: 600, onComplete: s => done.push(s) });
+  r2.start(); c2.go(60000); const shot = r2.update();
+  assert.equal(shot.simulatedSeconds, physical); assert.equal(done.length, 1); near(shot.wallSeconds, physical / 600, 1e-12);
+});
+
+test('timeScale: a hidden-document pause at 60× excludes the hidden time and does not resume by itself', () => {
+  const clock = fakeClock(), run = S.createRun({ durationSeconds: L.sunToPlanet('mars').lightSeconds, now: clock.now, timeScale: 60 });
+  run.start(); clock.go(2000);
+  assert.equal(run.pause('hidden'), true); const hidden = run.snapshot(); assert.equal(hidden.pauseReason, 'hidden'); near(hidden.simulatedSeconds, 120, 1e-12);
+  clock.go(600000); assert.equal(run.update().simulatedSeconds, hidden.simulatedSeconds); assert.equal(run.state, 'paused');
+  run.resume(); clock.go(1000); const shot = run.update(); near(shot.simulatedSeconds, 180, 1e-12); near(shot.activeSeconds, 3, 1e-12); assert.equal(shot.pauseReason, null);
+});
+
+test('timeScale: reset and dispose keep the scale; snapshot fields stay consistent', () => {
+  const clock = fakeClock(), done = [], physical = L.sunToPlanet('earth').lightSeconds;
+  const run = S.createRun({ durationSeconds: physical, now: clock.now, timeScale: 60, onComplete: s => done.push(s) });
+  const check = shot => { assert.equal(shot.timeScale, 60); assert.equal(shot.mode, 'accelerated'); assert.equal(shot.durationSeconds, physical);
+    near(shot.simulatedSeconds, Math.min(physical, shot.activeSeconds * 60), 1e-12); assert.equal(shot.travelledKm, L.lightDistanceKm(shot.simulatedSeconds));
+    near(shot.remainingSeconds, physical - shot.simulatedSeconds, 1e-12, 1e-9); assert.ok(shot.wallSeconds >= shot.activeSeconds - 1e-12); };
+  check(run.snapshot()); run.start(); clock.go(4000); check(run.update());
+  run.reset(); assert.equal(run.snapshot().simulatedSeconds, 0); check(run.snapshot());
+  run.start(); clock.go(physical / 60 * 1000 + 5); check(run.update()); assert.equal(done.length, 1);
+  run.reset(); run.start(); clock.go(1000); run.dispose(); const kept = run.snapshot(); check(kept); near(kept.simulatedSeconds, 60, 1e-12);
+  clock.go(9000); assert.deepEqual(run.update(), kept); assert.equal(done.length, 1);
+});
+
+test('timeScale: invalid values are rejected', () => {
+  for (const timeScale of [0, -1, -600, NaN, Infinity, -Infinity, '600', null, {}, true])
+    assert.throws(() => S.createRun({ timeScale }), { name: 'RangeError' }, String(timeScale));
+  assert.equal(S.createRun({ timeScale: undefined }).snapshot().timeScale, 1); // omitted → default 1
+  assert.equal(S.createRun({ timeScale: 0.5 }).snapshot().mode, 'slowed'); // slow motion is allowed (positive, finite)
 });

@@ -5,12 +5,16 @@
 
    Three kinds of time, kept apart:
    - wallSeconds: real time since start, including pauses (until completion or reset).
-   - activeSeconds: real time while running only (pauses excluded); the physics uses this.
-   - simulated astronomical time: not implemented; real-time mode only (activeSeconds × 1).
+   - activeSeconds: playback time, i.e. real time while running only (pauses excluded).
+   - simulatedSeconds: physical time in the model, activeSeconds × timeScale; the physics uses this. Light always moves at
+     c in the model; timeScale (default 1, "real-time") only makes playback faster, e.g. 600 = ten physical minutes per
+     playback second (mode "accelerated"; below 1 "slowed").
 
-   A run with durationSeconds stops exactly there: activeSeconds becomes durationSeconds itself (not a sampled time), so the
-   final distance is exactly LightData.lightDistanceKm(durationSeconds), and onComplete is called exactly once. Pausing,
-   resetting and disposing are the caller's job (the stage pauses on a hidden document); this module only keeps time.
+   durationSeconds is physical (simulated) time. A run with durationSeconds stops exactly there: simulatedSeconds becomes
+   durationSeconds itself (not a sampled time) and activeSeconds durationSeconds / timeScale, so the final distance is
+   exactly LightData.lightDistanceKm(durationSeconds), and onComplete is called exactly once. At timeScale 1 both equal
+   durationSeconds, as before. Pausing, resetting and disposing are the caller's job (the stage pauses on a hidden
+   document); this module only keeps time.
 
    Physical coordinates: 1 world unit = 1 000 km (WORLD_UNITS_PER_KM = 0.001). +x is the direction of propagation, the
    light source (emission point) is the origin, and the light axis is y = z = 0. Distances behind the source are negative
@@ -28,13 +32,14 @@ window.LightSim = (() => {
   const worldToKm = units => finite(units, 'units') / WORLD_UNITS_PER_KM;
 
   function createRun(options = {}) {
-    const { durationSeconds = null, now = () => performance.now(), onComplete = null } = options;
+    const { durationSeconds = null, now = () => performance.now(), onComplete = null, timeScale = 1 } = options;
     if (durationSeconds !== null && !(typeof durationSeconds === 'number' && Number.isFinite(durationSeconds) && durationSeconds > 0)) {
       throw new RangeError('durationSeconds must be a positive finite number or null');
     }
+    if (!(typeof timeScale === 'number' && Number.isFinite(timeScale) && timeScale > 0)) throw new RangeError('timeScale must be a positive finite number');
     if (typeof now !== 'function') throw new TypeError('now must be a function');
     if (onComplete !== null && typeof onComplete !== 'function') throw new TypeError('onComplete must be a function or null');
-    const durationMs = durationSeconds === null ? null : durationSeconds * 1000;
+    const durationMs = durationSeconds === null ? null : durationSeconds * 1000 / timeScale; // playback length of the run
     let state = 'idle', accumulatedMs = 0, segmentStart = 0, startedWall = null, endedWall = null, pauseReason = null;
     let completed = false, complete = onComplete, latest = -Infinity;
     // Monotonic reading: a source that steps back is held at its latest value, so time is never removed.
@@ -55,16 +60,18 @@ window.LightSim = (() => {
       callback(snapshot());
     }
     function activeSecondsAt(t) {
-      if (state === 'completed') return durationSeconds;
+      if (state === 'completed') return durationSeconds / timeScale;
       const ms = state === 'running' ? accumulatedMs + Math.max(0, t - segmentStart) : accumulatedMs;
       return (durationMs === null ? ms : Math.min(ms, durationMs)) / 1000; // Never past the stop, even between frames.
     }
     function snapshotAt(t) {
       const activeSeconds = activeSecondsAt(t);
+      // Physical time: exact at the stop, never past it (also against rounding in activeSeconds × timeScale).
+      const simulatedSeconds = state === 'completed' ? durationSeconds : durationSeconds === null ? activeSeconds * timeScale : Math.min(durationSeconds, activeSeconds * timeScale);
       return Object.freeze({
-        state, mode: 'real-time', durationSeconds, activeSeconds,
-        travelledKm: window.LightData.lightDistanceKm(activeSeconds),
-        remainingSeconds: durationSeconds === null ? null : Math.max(0, durationSeconds - activeSeconds),
+        state, mode: timeScale === 1 ? 'real-time' : timeScale > 1 ? 'accelerated' : 'slowed', timeScale, durationSeconds, activeSeconds, simulatedSeconds,
+        travelledKm: window.LightData.lightDistanceKm(simulatedSeconds),
+        remainingSeconds: durationSeconds === null ? null : Math.max(0, durationSeconds - simulatedSeconds),
         wallSeconds: startedWall === null ? 0 : Math.max(0, (endedWall ?? t) - startedWall) / 1000,
         pauseReason, completed
       });
