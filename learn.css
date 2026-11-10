@@ -417,6 +417,18 @@ body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12
 .learn-light-message p { margin: 0 0 4px; }
 .learn-light-lead { margin: 0 0 8px; font-size: 17px; font-weight: 600; color: #fff4c8; }
 .learn-light-lead[hidden], .learn-light-pick[hidden] { display: none; }
+.learn-light-feedback { margin: -4px 0 8px; font-size: 15px; color: #c3d2de; } /* Phase 6H.5.3.1: the planets guess feedback under its result */
+.learn-light-feedback[hidden] { display: none; }
+/* Phase 6H.5.3.2 – Sun-to-planets only. Desktop: the panel may use more of the screen's height, so the Mars question, the result line
+   and the Neptune discovery are all in view without scrolling. Short phones: slightly tighter spacing between the panel's lines. */
+@media (min-width: 901px) { #learn-root.learn-panel.is-planets-experiment { max-height: calc(100dvh - 176px); } }
+@media (max-width: 700px) and (min-height: 521px) and (max-height: 740px) {
+  #learn-root.is-planets-experiment .learn-light-lead { margin-bottom: 4px; }
+  #learn-root.is-planets-experiment .learn-light-feedback { margin: -2px 0 4px; }
+  #learn-root.is-planets-experiment .learn-light-choices { margin-bottom: 4px; }
+}
+/* Phones: room above the first control, so a focused button's outline is never cut by the panel body's edge (run states start with the action). */
+@media (max-width: 700px) and (min-height: 521px) { #learn-root.is-planets-experiment .learn-light-box { margin-top: 8px; } }
 .learn-light-box { display: flex; flex-direction: column; } /* no collapsing margins: every state's height is measured inside the box */
 .learn-light-pick { margin: 0 0 8px; }
 .learn-light-pick label { display: block; font-size: 14px; color: #c3d2de; }

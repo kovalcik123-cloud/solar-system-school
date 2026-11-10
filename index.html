@@ -3219,8 +3219,9 @@
                 stage.caption.textContent = next ? 'Ďalej sa zmení mierka: 0 – 1,7 au → 0 – 31 au' : outer ? 'Mierka 2 z 2 (nová) · Slnko → Neptún · 0 – 31 au' : 'Mierka 1 z 2 · Slnko → Mars · 0 – 1,7 au';
                 stage.speed.textContent = next ? `a zrýchlenie ${INNER_SCALE}× → ${OUTER_SCALE}×; čas letu svetla pokračuje` : outer ? `Zrýchlené ${OUTER_SCALE}× · 1 s = 10 min letu svetla` : `Zrýchlené ${INNER_SCALE}× · 1 s = 1 min letu svetla`;
                 stage.caption.classList.toggle('is-next', next); stage.speed.classList.toggle('is-next', next);
+                stage.speed.hidden = false;
                 put(stage.caption, box.left + margin, box.top); put(stage.speed, box.left + margin, box.top + stage.caption.offsetHeight + 2);
-                const head = stage.caption.offsetHeight + stage.speed.offsetHeight + 10;
+                let head = stage.caption.offsetHeight + stage.speed.offsetHeight + 10;
                 // Symbols: the Sun disc and the planet dots (smaller for the crowded inner group in the 0–31 au view).
                 stage.sun.scale.setScalar(px(outer ? 12 : 18)); // smaller in the 0–31 au view, so the inner dots stay visible beside it
                 stage.axis.scale.set(view.right - view.left, px(1.5), 1); stage.axis.position.set((view.left + view.right) / 2, 0, 10);
@@ -3235,37 +3236,61 @@
                 stage.groupLabel.hidden = !outer;
                 if (outer) items.push({ el: stage.groupLabel, x: (sx(gp.planets[0].x) + sx(gp.mars.x)) / 2, pref: -1 });
                 stage.planetLabels.forEach((label, i) => { const m = stage.solarMarks[i], shown = outer ? !m.inner : m.inner; label.el.hidden = !shown; if (shown) items.push({ el: label.el, x: sx(m.x), pref: i % 2 ? -1 : 1 }); });
-                const placed = [], minX = box.left, maxX = box.left + box.width;
-                for (const item of items) {
-                    const w = item.el.offsetWidth, cx = Math.min(Math.max(item.x, minX + w / 2), maxX - w / 2), a = cx - w / 2 - 6, b = cx + w / 2 + 6;
-                    for (const [side, row] of [[item.pref, 0], [-item.pref, 0], [item.pref, 1], [-item.pref, 1], [item.pref, 2], [-item.pref, 2]]) {
-                        if (placed.some(p => p.side === side && p.row === row && p.a < b && a < p.b)) continue;
-                        placed.push({ el: item.el, x: item.x, cx, side, row, a, b }); break;
+                const minX = box.left, maxX = box.left + box.width, roomy = margin > 20, bottom = box.top + box.height;
+                const rows = list => {
+                    const placed = [];
+                    for (const item of list) {
+                        const w = item.el.offsetWidth, cx = Math.min(Math.max(item.x, minX + w / 2), maxX - w / 2), a = cx - w / 2 - 6, b = cx + w / 2 + 6;
+                        for (const [side, row] of [[item.pref, 0], [-item.pref, 0], [item.pref, 1], [-item.pref, 1], [item.pref, 2], [-item.pref, 2]]) {
+                            if (placed.some(p => p.side === side && p.row === row && p.a < b && a < p.b)) continue;
+                            placed.push({ el: item.el, x: item.x, cx, side, row, a, b }); break;
+                        }
                     }
+                    return { placed, above: Math.max(0, ...placed.filter(p => p.side < 0).map(p => p.row + 1)), below: Math.max(0, ...placed.filter(p => p.side > 0).map(p => p.row + 1)) };
+                };
+                // Height check (Phase 6H.5.3.2): normal (time, distance, scale bar with its label), compact (one readout row, scale
+                // bar with its label), or tight. Tight (short free areas, e.g. a short phone's question and result states): one header
+                // line, the Sun and the current target (Mars, then Neptune; with its time once reached) above the light, one readout row
+                // with the real flight time; no scale bar or note. The scale and speed are in the header line.
+                let r = rows(items), readTop = box.top + head + r.above * LABEL_ROW + 2 * gap + r.below * LABEL_ROW + 6;
+                let compact = readTop + (roomy ? 50 : 34) + 30 + 26 > bottom;
+                // Between compact and tight: all labels and the readout row stay, only the scale bar and the note go (the header line
+                // still states the view's range in au).
+                let noScale = compact && readTop + 30 + 26 > bottom;
+                const tight = noScale && readTop + 24 > bottom;
+                if (tight) {
+                    compact = true;
+                    stage.caption.textContent = next ? `Ďalej: 0 – 31 au, ${OUTER_SCALE}×` : outer ? `Mierka 2/2 · 0 – 31 au · ${OUTER_SCALE}×` : `Mierka 1/2 · 0 – 1,7 au · ${INNER_SCALE}×`;
+                    stage.speed.hidden = true; head = stage.caption.offsetHeight + 6;
+                    const target = (outer ? gp.neptune : gp.mars).id;
+                    stage.groupLabel.hidden = true;
+                    stage.planetLabels.forEach(label => { label.el.hidden = label.id !== target; });
+                    r = rows([{ el: stage.sunLabel, x: sx(0), pref: -1 }, { el: stage.planetLabels.find(l => l.id === target).el, x: sx((outer ? gp.neptune : gp.mars).x), pref: -1 }]);
+                    readTop = box.top + head + r.above * LABEL_ROW + 2 * gap + r.below * LABEL_ROW + 2;
                 }
-                const above = Math.max(0, ...placed.filter(p => p.side < 0).map(p => p.row + 1)), below = Math.max(0, ...placed.filter(p => p.side > 0).map(p => p.row + 1));
-                const y = box.top + head + above * LABEL_ROW + gap;
+                // Very short (a short phone's question and result states): no separate readout. The exact time is still shown: at the
+                // stops by the target's label (Mars, Neptune), and before the start it is 0 s.
+                const minimal = tight && readTop + 24 > bottom && ['ready', 'mars', 'neptune'].includes(phase);
+                const placed = r.placed, y = box.top + head + r.above * LABEL_ROW + gap;
                 placed.forEach(p => put(p.el, p.cx, p.side < 0 ? y - gap - (p.row + 1) * LABEL_ROW : y + gap + p.row * LABEL_ROW));
                 const left = view.left - (box.left + margin + sunPad) * perPx, top = y * perPx;
                 Object.assign(stage.camera, { left, right: left + innerWidth * perPx, top, bottom: top - innerHeight * perPx });
                 stage.camera.updateProjectionMatrix();
                 cover(left, top, perPx);
                 // Readouts below the label rows: physical time large, then distance; one row "time · distance" when space is short.
-                const readTop = y + gap + below * LABEL_ROW + 6, roomy = margin > 20, bottom = box.top + box.height;
-                const compact = readTop + (roomy ? 50 : 34) + 22 + 30 > bottom;
-                stage.time.classList.toggle('is-compact', compact); stage.distance.hidden = compact;
+                stage.time.classList.toggle('is-compact', compact); stage.distance.hidden = compact; stage.time.hidden = minimal;
                 const cx = box.left + box.width / 2;
                 if (compact) put(stage.time, box.left + margin, readTop); else { put(stage.time, cx, readTop); put(stage.distance, cx, readTop + (roomy ? 50 : 34)); }
                 const scaleTop = compact ? readTop + 30 : readTop + (roomy ? 50 : 34) + 30, scalePx = LightSim.kmToWorld(LightData.auToKm(view.scaleAu)) / perPx;
                 stage.scale.classList.remove('is-end');
                 stage.scale.lastChild.textContent = `${String(view.scaleAu).replace('.', ',')} au ≈ ${new Intl.NumberFormat('sk-SK', { maximumFractionDigits: 1 }).format(LightData.auToKm(view.scaleAu) / 1e6)} mil. km`;
-                put(stage.scale, box.left + margin, scaleTop); stage.scale.style.width = `${scalePx.toFixed(1)}px`;
+                put(stage.scale, box.left + margin, scaleTop); stage.scale.style.width = `${scalePx.toFixed(1)}px`; stage.scale.hidden = noScale;
                 stage.note.textContent = outer ? 'Merkúr až Mars sú tu jedna značka len pre prehľadnosť; ich vzdialenosti ani časy sa nemenia. Planéty sú v rade len pre názornosť.'
                     : 'Planéty sú v jednom rade len pre názornosť. Bodky sú značky, nie skutočná veľkosť. Vzdialenosti sú priemerné, od stredu Slnka.';
                 stage.note.style.whiteSpace = 'normal'; stage.note.style.width = `${Math.max(60, box.width - 2 * margin)}px`; stage.note.hidden = false;
-                const noteTop = scaleTop + 30; stage.note.hidden = noteTop + Math.max(16, stage.note.offsetHeight) > bottom;
+                const noteTop = scaleTop + 30; stage.note.hidden = noScale || noteTop + Math.max(16, stage.note.offsetHeight) > bottom;
                 put(stage.note, box.left + margin, noteTop);
-                layout = { box, perPx, y, sx, margin, compact, view: name, placed, sizes: {} };
+                layout = { box, perPx, y, sx, margin, compact, noScale, tight, minimal, view: name, placed, sizes: {} };
             }
             // Light position: total active time (offset + this run) from LightSim, distance from LightData. The stops show the exact
             // LightData values (1 s and c × 1 s; the surface distance and travel time), never a sum of two rounded runs.
@@ -3400,6 +3425,7 @@
                 stage.earth.visible = !solar; stage.labels.earth.hidden = solar; stage.solar.visible = solar;
                 if (solar) stage.rings.earth.visible = false;
                 [stage.sunLabel, stage.caption, stage.speed].forEach(el => { el.hidden = !solar; });
+                stage.scale.hidden = false; stage.time.hidden = false; // the planets' tight layouts may have hidden the shared scale bar or readout
                 if (!solar) [...stage.planetLabels.map(l => l.el), stage.groupLabel].forEach(el => { el.hidden = true; });
                 [...stage.rulerLabels, ...stage.mileLabels].forEach(item => { item.el.hidden = !far; });
                 stage.scale.lastChild.textContent = far ? '1 000 000 km' : '100 000 km';
@@ -3501,7 +3527,7 @@
                 const { shot, seconds, km } = reading(), em = LightData.earthMoon, tip = predicted();
                 if (journey === 'planets') {
                     const gp = stage.gp, name = solarView(), v = gp[name];
-                    const viewP = layout && layout.view === name ? { name, perPx: layout.perPx, y: layout.y, compact: layout.compact, sun: layout.sx(0), axisEnd: layout.sx(v.right), front: layout.sx(LightSim.kmToWorld(km)),
+                    const viewP = layout && layout.view === name ? { name, perPx: layout.perPx, y: layout.y, compact: layout.compact, noScale: layout.noScale, tight: layout.tight, minimal: layout.minimal, sun: layout.sx(0), axisEnd: layout.sx(v.right), front: layout.sx(LightSim.kmToWorld(km)),
                         scalePx: LightSim.kmToWorld(LightData.auToKm(v.scaleAu)) / layout.perPx, scaleAu: v.scaleAu, rangeAu: v.au,
                         markers: stage.solarMarks.map(m => ({ id: m.id, x: layout.sx(m.x), sizePx: m.size, shown: m.dot.visible, ring: m.ring.visible })),
                         cluster: stage.cluster.visible ? { from: layout.sx(stage.cluster.position.x - stage.cluster.scale.x / 2), to: layout.sx(stage.cluster.position.x + stage.cluster.scale.x / 2) } : null } : null;
