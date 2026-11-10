@@ -2972,8 +2972,10 @@
             // Phases: ready → countdown → first (1 s run) → one-second → second (to the Moon) → arrived. Pausing is the run's own
             // state inside first/second. The countdown is measured on the same monotonic clock in update(); it is not active time.
             let phase = 'ready', offsetSeconds = 0, countdownStart = 0, countdownLeft = 0, interrupted = false, skipped = false, prediction = null;
-            // Journeys: 'earth-moon' (default; 1 s stop, then on to the Moon) or 'fifteen' (one 15 s run: ready → countdown → first → done).
-            let journey = 'earth-moon';
+            // Journeys: 'earth-moon' (default; 1 s stop, then on to the Moon) or 'fifteen' (one 15 s run: ready → countdown → first → done)
+            // or 'planets' (Phase 6H.5.2 prototype: ready → countdown → first (Sun → Mars at 60×) → mars → second (Mars → Neptune at 600×)
+            // → neptune). Arrivals: the planets the light has reached, in order, each recorded exactly once (planets journey only).
+            let journey = 'earth-moon', arrivals = [];
             // Milky Way backdrop (Phase 6H.4.3): the main scene's own stars.jpg texture on one static plane behind both journeys.
             // The source image is very dark (median pixel black, the band itself about 2 % luminance), so a plain colour multiplier
             // cannot show it. A small tone curve on this plane's own material: visible value v → min(1, brightness · v^lift).
@@ -3000,6 +3002,19 @@
                 return { earthX: -w(em.earthRadiusKm), earthR: w(em.earthRadiusKm), end, left: -w(em.earthRadiusKm) - w(em.centerKm), right: end, unit: w(em.centerKm), orbitR: w(em.centerKm),
                     units: LightData.inEarthMoonDistances(LightData.lightDistanceKm(FIFTEEN_S)) };
             }
+            // Sun to planets (Phase 6H.5.2), from LightData only: mean Sun–planet distances (semi-major axes) from the Sun's centre,
+            // light from the Sun's centre (x = 0) at c. Two fixed linear views, never changed silently: 0–1,7 au (Sun → Mars, played at
+            // 60×) and 0–31 au (the whole route to Neptune, played at 600×). Markers and the Sun disc have fixed screen sizes (symbols).
+            const INNER_AU = 1.7, OUTER_AU = 31, INNER_SCALE = 60, OUTER_SCALE = 600, LABEL_ROW = 30;
+            const PLANET_COLORS = Object.freeze({ mercury: 0xa9a29a, venus: 0xe8cf94, earth: 0x5fa8e8, mars: 0xd0694a, jupiter: 0xd9b58c, saturn: 0xe6d08e, uranus: 0x8fd8e0, neptune: 0x6f8cf0 });
+            function geometryPlanets() {
+                const w = LightSim.kmToWorld;
+                const planets = LightData.PLANETS.map(id => { const p = LightData.sunToPlanet(id); return Object.freeze({ id, au: p.distanceAu, km: p.distanceKm, x: w(p.distanceKm), seconds: p.lightSeconds, inner: p.distanceAu < INNER_AU }); });
+                const view = (au, scaleAu, timeScale) => Object.freeze({ left: 0, right: w(LightData.auToKm(au)), au, scaleAu, timeScale });
+                return { planets, mars: planets[3], neptune: planets[7], inner: view(INNER_AU, 0.5, INNER_SCALE), outer: view(OUTER_AU, 5, OUTER_SCALE) };
+            }
+            // The view follows the phase: the 0–31 au view only after the explicit continuation (toNeptune).
+            const solarView = () => phase === 'second' || phase === 'neptune' ? 'outer' : 'inner';
             const geo = () => journey === 'fifteen' ? stage.g15 : stage.g;
             // The main scene's Milky Way sky (the stars.jpg sphere): shared, never loaded twice and never disposed here.
             function skyMap() {
@@ -3071,6 +3086,20 @@
                     new THREE.LineDashedMaterial({ color: 0x8bc0dd, transparent: true, opacity: 0.55, dashSize: 0.02, gapSize: 0.03 }));
                 orbit.computeLineDistances(); orbit.position.set(g15.earthX, 0, 9); orbit.scale.setScalar(g15.orbitR);
                 fifteen.add(ruler, ...unitTicks, endTick, ...mileTicks, orbit); fifteen.visible = false; scene.add(fifteen);
+                // Sun-to-planets view: the axis, a symbolic Sun disc at the light source and one symbolic dot per planet at its exact
+                // distance; a warm ring marks each planet the light has reached. Built once; shown only on that journey.
+                const gp = geometryPlanets(), solar = new THREE.Group(), disc = new THREE.CircleGeometry(0.5, 32);
+                const axis = flat(0x5c7389, 0.9); axis.position.z = 10;
+                const sun = new THREE.Mesh(disc, new THREE.MeshBasicMaterial({ color: 0xffc94d })); sun.position.z = 8;
+                const solarMarks = gp.planets.map(p => {
+                    const dot = new THREE.Mesh(disc, new THREE.MeshBasicMaterial({ color: PLANET_COLORS[p.id] })); dot.position.set(p.x, 0, 12);
+                    const ring = new THREE.Mesh(ringGeometry, new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9, depthWrite: false })); ring.position.set(p.x, 0, 12); ring.visible = false;
+                    return { ...p, dot, ring, size: 0 };
+                });
+                // 0–31 au view (Phase 6H.5.2.B): the four inner planets are drawn as one symbolic group band from Mercury's to Mars's
+                // distance instead of four overlapping dots. A drawing simplification only: their distances and times are unchanged.
+                const cluster = flat(0x8bc0dd, 0.45); cluster.position.z = 11.5; cluster.visible = false;
+                solar.add(axis, sun, cluster, ...solarMarks.flatMap(m => [m.dot, m.ring])); solar.visible = false; scene.add(solar);
                 overlay = document.createElement('div'); overlay.id = 'light-stage-overlay'; overlay.hidden = true;
                 overlay.setAttribute('aria-hidden', 'true'); // Visual labels and readouts; the Learn panel carries the text.
                 const part = (cls, text = '') => { const el = document.createElement('div'); el.className = cls; el.textContent = text; overlay.append(el); return el; };
@@ -3081,9 +3110,16 @@
                 const rulerLabels = [...RULER_LABELS.map(n => ({ x: n * g15.unit, el: part('light-ruler', unitText(n)) })), { x: g15.end, el: part('light-ruler is-end', unitText(Math.round(g15.units * 10) / 10)) }];
                 const mileLabels = MILESTONES.map(seconds => ({ seconds, km: LightData.lightDistanceKm(seconds), el: part('light-mile', `${seconds} s`) }));
                 [...rulerLabels, ...mileLabels].forEach(item => { item.el.hidden = true; });
+                // Planet labels: name, and the exact light-flight time once the light has arrived (the time keeps its space before).
+                const labelled = (cls, name, when) => { const el = part(cls), a = document.createElement('span'), b = document.createElement('span'); a.textContent = name; b.className = 'when'; b.textContent = when; el.append(a, b); el.hidden = true; return el; };
+                const planetLabels = solarMarks.map(m => ({ id: m.id, el: labelled('light-planet', learnBodies[m.id], LightData.formatDuration(m.seconds)) }));
+                const sunLabel = part('light-planet is-sun', 'Slnko'), groupLabel = labelled('light-planet is-group', 'Merkúr – Mars', 'spolu len pre prehľadnosť');
+                const caption = part('light-caption'), speed = part('light-speed');
+                [sunLabel, caption, speed].forEach(el => { el.hidden = true; });
                 document.body.append(overlay);
                 stage = { scene, camera, sky, tone, earth, moon, route, gap, tip, beam, glow, head, rings, labels, scale, time, distance, tipLabel, note, g,
-                    g15, fifteen, ruler, unitTicks, endTick, mileTicks, orbit, rulerLabels, mileLabels };
+                    g15, fifteen, ruler, unitTicks, endTick, mileTicks, orbit, rulerLabels, mileLabels,
+                    gp, solar, axis, sun, cluster, solarMarks, planetLabels, sunLabel, groupLabel, caption, speed };
             }
             // Usable area between the planet bar and the Learn panel (the same rule as the comparison stage).
             function area() {
@@ -3099,19 +3135,16 @@
             // Camera framing: Earth's far limb to the Moon's far limb fills the usable width (room for the labels at both ends);
             // the route sits a little above the middle so the readouts fit below it. Recomputed only when the area changes.
             function frame() {
-                const box = area(), key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join();
+                const box = area(), key = [innerWidth, innerHeight, box.left, box.top, box.width, box.height].map(Math.round).join() + (journey === 'planets' ? solarView() + (phase === 'mars' ? ':mars' : '') : '');
                 if (key === frameKey) return;
                 frameKey = key;
+                if (journey === 'planets') { framePlanets(box); return; }
                 const g = geo(), margin = box.width < 420 || box.height < 260 ? 28 : 64, far = journey === 'fifteen';
                 const perPx = (g.right - g.left) / Math.max(1, box.width - 2 * margin), y = box.top + Math.min(box.height * 0.42, Math.max(44, box.height / 2 - 40));
                 const left = g.left - (box.left + margin) * perPx, top = y * perPx;
                 Object.assign(stage.camera, { left, right: left + innerWidth * perPx, top, bottom: top - innerHeight * perPx });
                 stage.camera.updateProjectionMatrix();
-                // Backdrop: the 2:1 panorama covers the whole view (cover fit), centred on the Milky Way core; static.
-                const viewW = innerWidth * perPx, viewH = innerHeight * perPx;
-                const coverH = Math.max(viewH * (1 + 2 * Math.abs(backdrop.offset)), viewW / 2); // 2:1 panorama, still covering when shifted
-                stage.sky.scale.set(2 * coverH, coverH, 1);
-                stage.sky.position.set(left + viewW / 2, top - viewH / 2 + backdrop.offset * viewH, -90);
+                cover(left, top, perPx);
                 const sx = x => box.left + margin + (x - g.left) / perPx, px = v => v * perPx;
                 stage.route.material.dashSize = px(4); stage.route.material.gapSize = px(5);
                 const sizes = { earth: 2 * g.earthR / perPx, moon: far ? 0 : 2 * g.moonR / perPx };
@@ -3164,10 +3197,89 @@
                 place(stage.note, box.left + margin, noteBelow);
                 layout = { box, perPx, y, sx, sizes, margin, compact };
             }
+            // Backdrop: the 2:1 panorama covers the whole view (cover fit), centred on the Milky Way core; static.
+            function cover(left, top, perPx) {
+                const viewW = innerWidth * perPx, viewH = innerHeight * perPx;
+                const coverH = Math.max(viewH * (1 + 2 * Math.abs(backdrop.offset)), viewW / 2); // 2:1 panorama, still covering when shifted
+                stage.sky.scale.set(2 * coverH, coverH, 1);
+                stage.sky.position.set(left + viewW / 2, top - viewH / 2 + backdrop.offset * viewH, -90);
+            }
+            // Sun-to-planets framing (Phase 6H.5.2): the current view's range (0–1,7 au or 0–31 au) fills the usable width after a small
+            // pad for the Sun disc; one linear scale per view. Labels go above or below the axis, in the first free row (left to right),
+            // so neighbours never overlap; the axis sits below the caption and the rows above it, the readouts below the rows under it.
+            function framePlanets(box) {
+                const gp = stage.gp, name = solarView(), view = gp[name], outer = name === 'outer';
+                const margin = box.width < 420 || box.height < 260 ? 20 : 48, sunPad = 14, gap = 12;
+                const perPx = (view.right - view.left) / Math.max(1, box.width - 2 * margin - sunPad);
+                const sx = x => box.left + margin + sunPad + (x - view.left) / perPx, px = v => v * perPx;
+                const put = (el, x, yy) => Object.assign(el.style, { left: `${Math.round(x)}px`, top: `${Math.round(yy)}px` });
+                // At the Mars stop the two header lines announce what the continuation changes (scale and playback speed, not the
+                // light's time, which continues); otherwise they state the current view's scale and speed.
+                const next = phase === 'mars';
+                stage.caption.textContent = next ? 'Ďalej sa zmení mierka: 0 – 1,7 au → 0 – 31 au' : outer ? 'Mierka 2 z 2 (nová) · Slnko → Neptún · 0 – 31 au' : 'Mierka 1 z 2 · Slnko → Mars · 0 – 1,7 au';
+                stage.speed.textContent = next ? `a zrýchlenie ${INNER_SCALE}× → ${OUTER_SCALE}×; čas letu svetla pokračuje` : outer ? `Zrýchlené ${OUTER_SCALE}× · 1 s = 10 min letu svetla` : `Zrýchlené ${INNER_SCALE}× · 1 s = 1 min letu svetla`;
+                stage.caption.classList.toggle('is-next', next); stage.speed.classList.toggle('is-next', next);
+                put(stage.caption, box.left + margin, box.top); put(stage.speed, box.left + margin, box.top + stage.caption.offsetHeight + 2);
+                const head = stage.caption.offsetHeight + stage.speed.offsetHeight + 10;
+                // Symbols: the Sun disc and the planet dots (smaller for the crowded inner group in the 0–31 au view).
+                stage.sun.scale.setScalar(px(outer ? 12 : 18)); // smaller in the 0–31 au view, so the inner dots stay visible beside it
+                stage.axis.scale.set(view.right - view.left, px(1.5), 1); stage.axis.position.set((view.left + view.right) / 2, 0, 10);
+                stage.solarMarks.forEach(m => { m.size = 10; m.dot.scale.setScalar(px(m.size)); m.ring.scale.setScalar(px(m.size + 8)); m.dot.visible = m.x <= view.right && !(outer && m.inner); });
+                stage.cluster.visible = outer;
+                if (outer) { // from Mercury's distance (or just clear of the Sun disc) to Mars's distance, at least 10 px wide
+                    const from = Math.max(gp.planets[0].x, px(8)), to = Math.max(gp.mars.x, from + px(10));
+                    stage.cluster.scale.set(to - from, px(10), 1); stage.cluster.position.set((from + to) / 2, 0, 11.5);
+                }
+                // Labels: the Sun, then the planets of this view (outer view: the inner four share one group label), left to right.
+                const items = [{ el: stage.sunLabel, x: sx(0), pref: 1 }];
+                stage.groupLabel.hidden = !outer;
+                if (outer) items.push({ el: stage.groupLabel, x: (sx(gp.planets[0].x) + sx(gp.mars.x)) / 2, pref: -1 });
+                stage.planetLabels.forEach((label, i) => { const m = stage.solarMarks[i], shown = outer ? !m.inner : m.inner; label.el.hidden = !shown; if (shown) items.push({ el: label.el, x: sx(m.x), pref: i % 2 ? -1 : 1 }); });
+                const placed = [], minX = box.left, maxX = box.left + box.width;
+                for (const item of items) {
+                    const w = item.el.offsetWidth, cx = Math.min(Math.max(item.x, minX + w / 2), maxX - w / 2), a = cx - w / 2 - 6, b = cx + w / 2 + 6;
+                    for (const [side, row] of [[item.pref, 0], [-item.pref, 0], [item.pref, 1], [-item.pref, 1], [item.pref, 2], [-item.pref, 2]]) {
+                        if (placed.some(p => p.side === side && p.row === row && p.a < b && a < p.b)) continue;
+                        placed.push({ el: item.el, x: item.x, cx, side, row, a, b }); break;
+                    }
+                }
+                const above = Math.max(0, ...placed.filter(p => p.side < 0).map(p => p.row + 1)), below = Math.max(0, ...placed.filter(p => p.side > 0).map(p => p.row + 1));
+                const y = box.top + head + above * LABEL_ROW + gap;
+                placed.forEach(p => put(p.el, p.cx, p.side < 0 ? y - gap - (p.row + 1) * LABEL_ROW : y + gap + p.row * LABEL_ROW));
+                const left = view.left - (box.left + margin + sunPad) * perPx, top = y * perPx;
+                Object.assign(stage.camera, { left, right: left + innerWidth * perPx, top, bottom: top - innerHeight * perPx });
+                stage.camera.updateProjectionMatrix();
+                cover(left, top, perPx);
+                // Readouts below the label rows: physical time large, then distance; one row "time · distance" when space is short.
+                const readTop = y + gap + below * LABEL_ROW + 6, roomy = margin > 20, bottom = box.top + box.height;
+                const compact = readTop + (roomy ? 50 : 34) + 22 + 30 > bottom;
+                stage.time.classList.toggle('is-compact', compact); stage.distance.hidden = compact;
+                const cx = box.left + box.width / 2;
+                if (compact) put(stage.time, box.left + margin, readTop); else { put(stage.time, cx, readTop); put(stage.distance, cx, readTop + (roomy ? 50 : 34)); }
+                const scaleTop = compact ? readTop + 30 : readTop + (roomy ? 50 : 34) + 30, scalePx = LightSim.kmToWorld(LightData.auToKm(view.scaleAu)) / perPx;
+                stage.scale.classList.remove('is-end');
+                stage.scale.lastChild.textContent = `${String(view.scaleAu).replace('.', ',')} au ≈ ${new Intl.NumberFormat('sk-SK', { maximumFractionDigits: 1 }).format(LightData.auToKm(view.scaleAu) / 1e6)} mil. km`;
+                put(stage.scale, box.left + margin, scaleTop); stage.scale.style.width = `${scalePx.toFixed(1)}px`;
+                stage.note.textContent = outer ? 'Merkúr až Mars sú tu jedna značka len pre prehľadnosť; ich vzdialenosti ani časy sa nemenia. Planéty sú v rade len pre názornosť.'
+                    : 'Planéty sú v jednom rade len pre názornosť. Bodky sú značky, nie skutočná veľkosť. Vzdialenosti sú priemerné, od stredu Slnka.';
+                stage.note.style.whiteSpace = 'normal'; stage.note.style.width = `${Math.max(60, box.width - 2 * margin)}px`; stage.note.hidden = false;
+                const noteTop = scaleTop + 30; stage.note.hidden = noteTop + Math.max(16, stage.note.offsetHeight) > bottom;
+                put(stage.note, box.left + margin, noteTop);
+                layout = { box, perPx, y, sx, margin, compact, view: name, placed, sizes: {} };
+            }
             // Light position: total active time (offset + this run) from LightSim, distance from LightData. The stops show the exact
             // LightData values (1 s and c × 1 s; the surface distance and travel time), never a sum of two rounded runs.
             function reading() {
                 const shot = run ? run.snapshot() : null, em = LightData.earthMoon;
+                // Planets: physical time is the Mars offset plus the run's simulatedSeconds (never activeSeconds, which is playback time
+                // at 60× or 600×); the stops show the exact LightData values for Mars and Neptune.
+                if (journey === 'planets') {
+                    const gp = stage.gp;
+                    if (phase === 'mars') return { shot, seconds: gp.mars.seconds, km: gp.mars.km };
+                    if (phase === 'neptune') return { shot, seconds: gp.neptune.seconds, km: gp.neptune.km };
+                    if (phase !== 'first' && phase !== 'second') return { shot, seconds: 0, km: 0 };
+                    return { shot, seconds: offsetSeconds + shot.simulatedSeconds, km: (offsetSeconds ? gp.mars.km : 0) + shot.travelledKm };
+                }
                 if (phase === 'done') return { shot, seconds: FIFTEEN_S, km: LightData.lightDistanceKm(FIFTEEN_S) }; // exact 15 s stop
                 if (phase === 'arrived') return { shot, seconds: LightData.earthMoonTravelSeconds(), km: em.surfaceKm };
                 if (phase === 'one-second') return { shot, seconds: 1, km: LightData.lightDistanceKm(1) };
@@ -3176,17 +3288,46 @@
             }
             // The learner's prediction: a fraction of the surface route (0 = Earth, 1 = the Moon), or null before any choice.
             function predicted() {
-                if (prediction === null || journey === 'fifteen') return null; // the 15 s prediction is not part of this scene yet
+                if (prediction === null || journey !== 'earth-moon') return null; // the other journeys have no tip on the route
                 const km = prediction * LightData.earthMoon.surfaceKm, actual = LightData.lightDistanceKm(1), tolerance = TIP_TOLERANCE * LightData.earthMoon.surfaceKm;
                 const verdict = Math.abs(km - actual) <= tolerance ? 'close' : km < actual ? 'further' : 'shorter'; // light went further / not as far
                 return { fraction: prediction, km, verdict, toleranceKm: tolerance };
             }
-            function place() {
-                const { seconds, km } = reading(), g = geo(), perPx = layout.perPx, far = journey === 'fifteen', x = Math.min(LightSim.kmToWorld(km), far ? g.end : g.surface);
+            // The light: beam from the source to x, a trailing glow and the head (fixed screen sizes).
+            function drawLight(x, perPx) {
                 stage.beam.visible = x > 0; stage.beam.scale.set(Math.max(x, 1e-9), BEAM_PX * perPx, 1); stage.beam.position.set(x / 2, 0, 13);
                 const glowLength = Math.min(GLOW_PX[0] * perPx, x); // trailing only: its right edge is the front
                 stage.glow.visible = x > 0; stage.glow.scale.set(Math.max(glowLength, 1e-9), GLOW_PX[1] * perPx, 1); stage.glow.position.set(x - glowLength / 2, 0, 14);
                 stage.head.scale.setScalar(HEAD_PX * perPx); stage.head.position.set(x, 0, 15);
+            }
+            function placeBackdrop() {
+                const map = backdrop.brightness > 0 ? skyMap() : null; // shared with the main scene's sky sphere
+                if (stage.sky.material.map !== map) { stage.sky.material.map = map; stage.sky.material.needsUpdate = true; }
+                stage.sky.visible = !!map;
+                stage.tone.skyGain.value = backdrop.brightness; stage.tone.skyLift.value = backdrop.lift; // uniforms only, no recompile
+            }
+            // Sun to planets: the light, arrival rings and labels (from the recorded arrivals) and the readouts. Time is physical time,
+            // shown in whole seconds as h / min / s; "≈" marks the rounded distance; the playback speed is in the badge.
+            function placePlanets() {
+                const { seconds, km } = reading(), counting = phase === 'countdown';
+                drawLight(LightSim.kmToWorld(km), layout.perPx);
+                stage.gap.visible = false; stage.tip.visible = false; stage.tipLabel.hidden = true;
+                const reached = new Set(arrivals.map(a => a.id));
+                stage.solarMarks.forEach((m, i) => { const r = reached.has(m.id); m.ring.visible = r && m.dot.visible; stage.planetLabels[i].el.classList.toggle('is-reached', r); });
+                stage.groupLabel.classList.toggle('is-reached', reached.has('mars'));
+                const mil = `${new Intl.NumberFormat('sk-SK', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(km / 1e6)} mil. km`;
+                const time = counting ? String(countdownLeft) : LightData.formatDuration(seconds);
+                const distance = counting ? 'Pozor…' : km > 0 ? `skutočný čas letu svetla · ≈ ${mil}` : 'skutočný čas letu svetla · 0 km';
+                const shown = layout.compact ? (counting ? `${time} · Pozor…` : `${time} · ${km > 0 ? `≈ ${mil}` : '0 km'}`) : time;
+                if (stage.time.textContent !== shown) stage.time.textContent = shown;
+                stage.time.classList.toggle('is-countdown', counting);
+                if (stage.distance.textContent !== distance) stage.distance.textContent = distance;
+                placeBackdrop();
+            }
+            function place() {
+                if (journey === 'planets') { placePlanets(); return; }
+                const { seconds, km } = reading(), g = geo(), perPx = layout.perPx, far = journey === 'fifteen', x = Math.min(LightSim.kmToWorld(km), far ? g.end : g.surface);
+                drawLight(x, perPx);
                 // Milestones: muted from the start, lit when the light (from LightSim) has reached their exact distance c × t.
                 if (far) stage.mileLabels.forEach((item, i) => { const reached = km >= item.km; item.el.classList.toggle('is-reached', reached); stage.mileTicks[i].material.color.set(reached ? 0xffe08a : 0x6f8aa3); });
                 // The ruler's end label ("11,7×") is the experiment's answer: shown only at the exact 15 s result (Phase 6H.4.2).
@@ -3216,10 +3357,7 @@
                 if (stage.time.textContent !== shown) stage.time.textContent = shown;
                 stage.time.classList.toggle('is-countdown', counting);
                 if (stage.distance.textContent !== distance) stage.distance.textContent = distance;
-                const map = backdrop.brightness > 0 ? skyMap() : null; // shared with the main scene's sky sphere
-                if (stage.sky.material.map !== map) { stage.sky.material.map = map; stage.sky.material.needsUpdate = true; }
-                stage.sky.visible = !!map;
-                stage.tone.skyGain.value = backdrop.brightness; stage.tone.skyLift.value = backdrop.lift; // uniforms only, no recompile
+                placeBackdrop();
                 for (const [mesh, name] of [[stage.earth, 'Zem'], [stage.moon, 'Mesiac']]) { // textures may load after build
                     const map = mainMap(name);
                     if (map && mesh.material.map !== map) { mesh.material.map = map; mesh.material.color.set(0xffffff); mesh.material.needsUpdate = true; }
@@ -3240,22 +3378,34 @@
                 document[method]('visibilitychange', onHidden); window[method]('pagehide', onHidden);
             }
             // One run per segment; its completion moves the experiment on (exactly once, by LightSim).
-            function newRun(durationSeconds, next) {
+            function newRun(durationSeconds, next, timeScale = 1) {
                 let created = null;
-                created = LightSim.createRun({ durationSeconds, onComplete: () => { if (run === created) { phase = next; publish(); } } });
+                created = LightSim.createRun({ durationSeconds, timeScale, onComplete: () => { if (run === created) { phase = next; publish(); } } });
                 run?.dispose(); run = created;
+            }
+            // Planets: records each planet once, in order, when the light's physical distance reaches its exact distance. The time
+            // recorded is the planet's exact light-flight time (LightData), not a sampled frame time.
+            function track() {
+                if (journey !== 'planets' || !stage) return;
+                const { km } = reading();
+                for (const p of stage.gp.planets) if (km >= p.km && !arrivals.some(a => a.id === p.id)) arrivals.push(Object.freeze({ id: p.id, seconds: p.seconds, km: p.km, view: solarView(), skipped }));
             }
             // Configuration: { journey: 'earth-moon' (default) | 'fifteen' }; other keys (kind) are ignored. The prediction is kept
             // (Learn owns it). The journey switches the scene objects; the physics, beam, countdown and lifecycle are shared.
             function configure(next = {}) {
                 if (!saved) return false;
-                journey = next?.journey === 'fifteen' ? 'fifteen' : 'earth-moon';
-                const far = journey === 'fifteen';
-                stage.fifteen.visible = far; stage.moon.visible = !far; stage.rings.moon.visible = !far; stage.route.visible = !far; stage.labels.moon.hidden = far;
+                journey = next?.journey === 'fifteen' || next?.journey === 'planets' ? next.journey : 'earth-moon';
+                const far = journey === 'fifteen', solar = journey === 'planets', em = journey === 'earth-moon';
+                stage.fifteen.visible = far; stage.moon.visible = em; stage.rings.moon.visible = em; stage.route.visible = em; stage.labels.moon.hidden = !em;
+                stage.earth.visible = !solar; stage.labels.earth.hidden = solar; stage.solar.visible = solar;
+                if (solar) stage.rings.earth.visible = false;
+                [stage.sunLabel, stage.caption, stage.speed].forEach(el => { el.hidden = !solar; });
+                if (!solar) [...stage.planetLabels.map(l => l.el), stage.groupLabel].forEach(el => { el.hidden = true; });
                 [...stage.rulerLabels, ...stage.mileLabels].forEach(item => { item.el.hidden = !far; });
                 stage.scale.lastChild.textContent = far ? '1 000 000 km' : '100 000 km';
-                stage.note.textContent = far ? 'Krúžok je značka Zeme. Prerušovaný kruh je priemerná dráha Mesiaca.' : 'Krúžok je značka, nie skutočná veľkosť.';
-                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; interrupted = false; skipped = false; countdownLeft = 0; frameKey = '';
+                stage.note.textContent = solar ? 'Planéty sú v jednom rade len pre názornosť. Bodky sú značky, nie skutočná veľkosť. Vzdialenosti sú priemerné, od stredu Slnka.'
+                    : far ? 'Krúžok je značka Zeme. Prerušovaný kruh je priemerná dráha Mesiaca.' : 'Krúžok je značka, nie skutočná veľkosť.';
+                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; interrupted = false; skipped = false; countdownLeft = 0; frameKey = ''; arrivals = [];
                 publish();
                 return true;
             }
@@ -3268,10 +3418,20 @@
                 if (!saved || phase !== 'one-second') return false;
                 offsetSeconds = 1; newRun(LightData.earthMoonTravelSeconds() - 1, 'arrived'); phase = 'second'; skipped = false; run.start(); publish(); return true;
             }
+            // Planets: the explicit continuation after the Mars stop. The view changes to 0–31 au and a new run at 600× continues from
+            // Mars's exact light-flight time (physical time is not restarted); it stops exactly at Neptune.
+            function toNeptune() {
+                if (!saved || journey !== 'planets' || phase !== 'mars') return false;
+                const gp = stage.gp;
+                offsetSeconds = gp.mars.seconds; newRun(gp.neptune.seconds - gp.mars.seconds, 'neptune', OUTER_SCALE); phase = 'second'; skipped = false; frameKey = '';
+                run.start(); publish(); return true;
+            }
             // Reduced motion alternative: the next result without movement (exact values; the simulation itself is not run).
             function skip() {
-                if (!saved || !['ready', 'countdown', 'one-second'].includes(phase)) return false;
+                const solar = journey === 'planets';
+                if (!saved || !(solar ? ['ready', 'countdown', 'mars'] : ['ready', 'countdown', 'one-second']).includes(phase)) return false;
                 run?.dispose(); run = null; offsetSeconds = 0; skipped = true;
+                if (solar) { phase = phase === 'mars' ? 'neptune' : 'mars'; frameKey = ''; track(); publish(); return true; }
                 phase = phase === 'one-second' ? 'arrived' : journey === 'fifteen' ? 'done' : 'one-second'; publish(); return true;
             }
             const pass = name => () => { if (!saved || !run || !['first', 'second'].includes(phase)) return false; const done = run[name](); if (done) publish(); return done; };
@@ -3304,7 +3464,7 @@
             function end() {
                 if (!saved) return;
                 listen(false);
-                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; countdownLeft = 0; interrupted = false; skipped = false; prediction = null;
+                run?.dispose(); run = null; phase = 'ready'; offsetSeconds = 0; countdownLeft = 0; interrupted = false; skipped = false; prediction = null; arrivals = [];
                 notify = null; frameKey = ''; layout = null;
                 overlay.hidden = true;
                 controls.enabled = saved.controls;
@@ -3319,10 +3479,15 @@
                 if (!saved) return;
                 if (phase === 'countdown') {
                     const elapsed = performance.now() - countdownStart;
-                    if (elapsed >= COUNTDOWN_MS) { countdownLeft = 0; if (journey === 'fifteen') newRun(FIFTEEN_S, 'done'); else newRun(1, 'one-second'); phase = 'first'; run.start(); publish(); }
+                    if (elapsed >= COUNTDOWN_MS) {
+                        countdownLeft = 0;
+                        if (journey === 'fifteen') newRun(FIFTEEN_S, 'done'); else if (journey === 'planets') newRun(stage.gp.mars.seconds, 'mars', INNER_SCALE); else newRun(1, 'one-second');
+                        phase = 'first'; run.start(); publish();
+                    }
                     else { const left = 3 - Math.floor(elapsed / 1000); if (left !== countdownLeft) { countdownLeft = left; publish(); } }
                 }
                 if (run) run.update();
+                track();
             }
             // Draws the stage instead of the Solar System; false when inactive.
             function render() {
@@ -3334,6 +3499,17 @@
             function state() {
                 if (!saved) return { active: false };
                 const { shot, seconds, km } = reading(), em = LightData.earthMoon, tip = predicted();
+                if (journey === 'planets') {
+                    const gp = stage.gp, name = solarView(), v = gp[name];
+                    const viewP = layout && layout.view === name ? { name, perPx: layout.perPx, y: layout.y, compact: layout.compact, sun: layout.sx(0), axisEnd: layout.sx(v.right), front: layout.sx(LightSim.kmToWorld(km)),
+                        scalePx: LightSim.kmToWorld(LightData.auToKm(v.scaleAu)) / layout.perPx, scaleAu: v.scaleAu, rangeAu: v.au,
+                        markers: stage.solarMarks.map(m => ({ id: m.id, x: layout.sx(m.x), sizePx: m.size, shown: m.dot.visible, ring: m.ring.visible })),
+                        cluster: stage.cluster.visible ? { from: layout.sx(stage.cluster.position.x - stage.cluster.scale.x / 2), to: layout.sx(stage.cluster.position.x + stage.cluster.scale.x / 2) } : null } : null;
+                    return { active: true, journey, phase, run: shot?.state ?? null, paused: shot?.state === 'paused', pauseReason: shot?.pauseReason ?? null, countdown: phase === 'countdown' ? countdownLeft : 0,
+                        interrupted, skipped, seconds, travelledKm: km, stage: name, timeScale: v.timeScale, runTimeScale: shot?.timeScale ?? null, playbackSeconds: shot?.activeSeconds ?? 0,
+                        offsetSeconds, arrivals: arrivals.map(a => ({ ...a })), done: phase === 'neptune', prediction: null,
+                        world: { planets: gp.planets.map(p => ({ ...p })), inner: { ...gp.inner }, outer: { ...gp.outer } }, view: viewP };
+                }
                 if (journey === 'fifteen') {
                     const f = stage.g15, d15 = LightData.lightDistanceKm(FIFTEEN_S);
                     const view15 = layout ? { perPx: layout.perPx, y: layout.y, earth: { x: layout.sx(f.earthX), diameterPx: layout.sizes.earth, ring: stage.rings.earth.visible }, source: layout.sx(0), end: layout.sx(f.end),
@@ -3350,7 +3526,7 @@
                 return { active: true, journey, phase, run: shot?.state ?? null, paused: shot?.state === 'paused', pauseReason: shot?.pauseReason ?? null, countdown: phase === 'countdown' ? countdownLeft : 0,
                     interrupted, skipped, seconds, travelledKm: km, remainingKm: Math.max(0, em.surfaceKm - km), arrived: phase === 'arrived', prediction: tip, world: { ...g }, view };
             }
-            return { begin, configure, end, update, render, state, start, toMoon, skip, setPrediction, setBackground, get background() { return { ...backdrop, shown: !!stage?.sky.visible, map: stage?.sky.material.map ?? null }; }, pause: pass('pause'), resume: pass('resume'), reset, get active() { return !!saved; } };
+            return { begin, configure, end, update, render, state, start, toMoon, toNeptune, skip, setPrediction, setBackground, get background() { return { ...backdrop, shown: !!stage?.sky.visible, map: stage?.sky.material.map ?? null }; }, pause: pass('pause'), resume: pass('resume'), reset, get active() { return !!saved; } };
         })();
 
         // One Learn body map. Lesson IDs resolve to existing scene bodies only.

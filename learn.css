@@ -450,3 +450,15 @@ body.is-light-stage #learn-root.learn-panel[data-layout="side"] { bottom: calc(1
 #learn-root[data-layout="side"] .learn-light-box:has(.learn-light-choices) .learn-light-lead { font-size: 15px; }
 #learn-root[data-layout="side"] .learn-light-box:has(.learn-light-choices) .learn-light-message p { font-size: 15px; }
 #learn-root[data-layout="side"] .learn-light-choices .learn-answer-text { font-size: 13px; }
+/* Phase 6H.5.2 (prototype): Sun-to-planets journey – planet labels (name, then the exact light-flight time once reached), the view caption and the speed badge. */
+#light-stage-overlay .light-planet { transform: translateX(-50%); font-size: 12px; line-height: 1.2; font-weight: 600; color: #e8f2fa; text-align: center; }
+#light-stage-overlay .light-planet span { display: block; }
+#light-stage-overlay .light-planet .when { font-weight: 400; color: #ffe08a; font-variant-numeric: tabular-nums; visibility: hidden; }
+#light-stage-overlay .light-planet.is-reached .when { visibility: visible; }
+#light-stage-overlay .light-planet.is-sun { color: #ffd98a; }
+#light-stage-overlay .light-planet.is-group { color: #c3d2de; }
+#light-stage-overlay .light-caption { font-size: 13px; font-weight: 600; color: #e8f2fa; }
+#light-stage-overlay .light-speed { font-size: 12px; color: #8bd8ff; font-variant-numeric: tabular-nums; }
+/* Phase 6H.5.2.B: the inner-planet group's hint line (always shown) and the Mars-stop announcement of the coming scale and speed change. */
+#light-stage-overlay .light-planet.is-group span + span { font-weight: 400; color: #a8bacd; visibility: visible; }
+#light-stage-overlay .light-caption.is-next, #light-stage-overlay .light-speed.is-next { color: #ffe08a; }
