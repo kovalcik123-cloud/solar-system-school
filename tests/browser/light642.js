@@ -147,14 +147,14 @@ const reveals = p => [...p.lines, ...p.details, p.lead ?? ''].some(t => /11,7|4 
     check('no JS or WebGL errors (reduced motion)', errors.length === 0, errors.join('; '));
     await context.close();
   }
-  // 4. The real catalogue keeps "Pohyb vo vesmíre" inactive.
+  // 4. The real catalogue (Phase 6H.6.3 activation candidate: six active topics; until 6H.6.2 "Pohyb vo vesmíre" was inactive).
   {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } }), p2 = await ctx.newPage();
     await p2.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') })); await p2.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
     await p2.goto(`http://localhost:${PORT}/`); await p2.waitForTimeout(600); await p2.fill('#activation-code', 'NGV-2025'); await p2.evaluate(() => checkCode()); await p2.waitForTimeout(2200);
     await p2.evaluate(() => Learn.enter()); await p2.waitForTimeout(300);
     const topics = await p2.evaluate(() => [...document.querySelectorAll('.learn-topic')].map(c => ({ t: c.querySelector('h3').textContent, on: !!c.querySelector('button') && !c.querySelector('button').disabled })));
-    check('real catalogue: five topics active, "Pohyb vo vesmíre" inactive', topics.filter(t => t.on).length === 5 && topics.find(t => t.t === 'Pohyb vo vesmíre').on === false, JSON.stringify(topics));
+    check('real catalogue (Phase 6H.6.3 activation candidate): six topics active, the sixth "Svetlo a vesmírne vzdialenosti"', topics.length === 6 && topics.filter(t => t.on).length === 6 && topics[5].t === 'Svetlo a vesmírne vzdialenosti' && topics[5].on === true, JSON.stringify(topics));
     await ctx.close();
   }
   console.log(`${passes} passed, ${failures} failed`);

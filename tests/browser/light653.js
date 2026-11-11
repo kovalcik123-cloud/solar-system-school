@@ -115,10 +115,12 @@ async function tabTo(pg, label) {
   // 3. Isolation of the technical preview.
   {
     const { pg, errors, context } = await open(browser, 1366, 768, false); // production content, unpatched
-    const prod = await pg.evaluate(() => { Learn.enter(); const card = [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Pohyb vo vesmíre');
-      const lessons = window.LearnContent.lessons, planets = lessons.flatMap(l => l.steps).filter(s => s.experiment?.journey === 'planets').length;
-      return { button: !!card?.querySelector('button:not([disabled])'), status: card?.querySelector('.learn-topic-status')?.textContent ?? null, pohybLesson: lessons.some(l => l.id === 'pohyb'), lightSteps: lessons.flatMap(l => l.steps).filter(s => s.experiment?.kind === 'light-travel').length, planets }; });
-    check(`production content: "Pohyb vo vesmíre" stays inactive (no lesson, status "${prod.status}", no start button); no lesson uses any light experiment or the planets journey`, !prod.button && !prod.pohybLesson && prod.lightSteps === 0 && prod.planets === 0, JSON.stringify(prod));
+    // Phase 6H.6.3 activation candidate: the real sixth lesson is active and uses the three light experiments; the technical preview
+    // (the "nahlad" step of the test fixture) stays test-only. Until 6H.6.2 this checked an inactive topic with no light steps.
+    const prod = await pg.evaluate(() => { Learn.enter(); const card = [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Svetlo a vesmírne vzdialenosti');
+      const lessons = window.LearnContent.lessons, light = lessons.flatMap(l => l.steps.filter(s => s.experiment?.kind === 'light-travel').map(s => `${l.id}:${s.experiment.journey}`));
+      return { button: !!card?.querySelector('button:not([disabled])'), status: card?.querySelector('.learn-topic-status')?.textContent ?? null, light, preview: lessons.some(l => l.steps.some(s => s.id === 'nahlad' || s.title === 'Technický náhľad')), testTopic: window.LearnContent.topics.some(t => t.id === 'test-svetlo') }; });
+    check(`production content: the sixth topic is active (start button, no "${prod.status}" status); its lesson holds exactly the three light experiments; the technical preview and its test topic stay test-only`, prod.button && prod.status === null && JSON.stringify(prod.light) === JSON.stringify(['pohyb:earth-moon', 'pohyb:fifteen', 'pohyb:planets']) && !prod.preview && !prod.testTopic, JSON.stringify(prod));
     // The planets journey cannot start outside Learn, in Quiz, or by an unknown journey name.
     const gate = await pg.evaluate(() => { Learn.leave(); const out = lightStage.begin({ kind: 'light-travel', journey: 'planets' }, () => {}); const active = lightStage.active; return { out, active }; });
     check('outside Learn the stage refuses to begin (no way into the planets journey from Explore)', gate.out === false && gate.active === false, JSON.stringify(gate));

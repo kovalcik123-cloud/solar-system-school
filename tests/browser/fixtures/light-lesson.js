@@ -21,10 +21,12 @@ const lesson = Object.freeze({
     { id: 'jedna-sekunda', type: 'experiment', title: 'Svetlo za jednu sekundu',
       text: 'Svetlo vyšleme z povrchu Zeme smerom k Mesiacu. Odhadni, kam sa dostane za jednu sekundu, a potom ho nechaj doletieť až k povrchu Mesiaca.',
       experiment: { kind: 'light-travel', journey: 'earth-moon' } },
+    // Phase 6H.6.3: a transition is shown in the panel before the light starts (also on phones); the 15 s sentence lives only there.
     { id: 'patnast-sekund', type: 'experiment', title: 'Svetlo za 15 sekúnd',
-      text: 'Za jednu sekundu svetlo takmer doletelo k Mesiacu. Kam sa dostane za 15 sekúnd?',
+      transition: 'Za jednu sekundu svetlo takmer doletelo k Mesiacu. Kam sa dostane za 15 sekúnd?',
       experiment: { kind: 'light-travel', journey: 'fifteen' } },
     { id: 'k-planetam', type: 'experiment', title: 'Svetlo zo Slnka k planétam',
+      transition: 'K planétam je to oveľa ďalej. Prehrávanie zrýchlime, ale svetlo bude letieť stále rovnako rýchlo.',
       text: 'Doteraz bežal čas naozaj. K planétam je to však tak ďaleko, že cestu zrýchlime – veľké hodiny budú stále ukazovať skutočný čas letu svetla.',
       experiment: { kind: 'light-travel', journey: 'planets' } },
     // Correct answers sit in different positions so the order gives no hint.

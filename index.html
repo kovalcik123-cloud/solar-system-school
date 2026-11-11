@@ -3140,7 +3140,11 @@
                 frameKey = key;
                 if (journey === 'planets') { framePlanets(box); return; }
                 const g = geo(), margin = box.width < 420 || box.height < 260 ? 28 : 64, far = journey === 'fifteen';
-                const perPx = (g.right - g.left) / Math.max(1, box.width - 2 * margin), y = box.top + Math.min(box.height * 0.42, Math.max(44, box.height / 2 - 40));
+                const perPx = (g.right - g.left) / Math.max(1, box.width - 2 * margin), y0 = box.top + Math.min(box.height * 0.42, Math.max(44, box.height / 2 - 40));
+                // 15 s in a very short free area (Phase 6H.6.3.B; e.g. a short phone's ready state with the lesson's transition, where even
+                // the short-area layout below would run under the panel): Earth, the light and the 1/5/10/15 s milestones stay; the scale
+                // bar, the ruler numbers and the readout (0 s before the start) are left out. Never during a run (its panel is shorter).
+                const tight = far && y0 + 57 > box.top + box.height + 12, y = tight ? box.top + Math.max(18, Math.min(30, box.height - 12)) : y0;
                 const left = g.left - (box.left + margin) * perPx, top = y * perPx;
                 Object.assign(stage.camera, { left, right: left + innerWidth * perPx, top, bottom: top - innerHeight * perPx });
                 stage.camera.updateProjectionMatrix();
@@ -3193,9 +3197,11 @@
                 stage.note.style.whiteSpace = 'normal'; stage.note.style.width = `${Math.max(60, box.width - 2 * margin)}px`; // wraps inside the free area
                 stage.note.hidden = false; // measured while displayed
                 const noteBelow = y + below + 30 + (roomy ? 84 : 62), fitsBelow = noteBelow + Math.max(16, stage.note.offsetHeight) <= box.top + box.height;
-                stage.note.hidden = !(stage.rings.earth.visible || (!far && stage.rings.moon.visible)) || !fitsBelow;
+                stage.note.hidden = !(stage.rings.earth.visible || (!far && stage.rings.moon.visible)) || !fitsBelow || tight;
                 place(stage.note, box.left + margin, noteBelow);
-                layout = { box, perPx, y, sx, sizes, margin, compact };
+                if (far) stage.rulerLabels.slice(0, -1).forEach(item => { item.el.hidden = tight; }); // the end label ("11,7×") follows the result in place()
+                stage.scale.hidden = tight; stage.time.hidden = tight;
+                layout = { box, perPx, y, sx, sizes, margin, compact, tight };
             }
             // Backdrop: the 2:1 panorama covers the whole view (cover fit), centred on the Milky Way core; static.
             function cover(left, top, perPx) {
@@ -3356,7 +3362,7 @@
                 // Milestones: muted from the start, lit when the light (from LightSim) has reached their exact distance c × t.
                 if (far) stage.mileLabels.forEach((item, i) => { const reached = km >= item.km; item.el.classList.toggle('is-reached', reached); stage.mileTicks[i].material.color.set(reached ? 0xffe08a : 0x6f8aa3); });
                 // The ruler's end label ("11,7×") is the experiment's answer: shown only at the exact 15 s result (Phase 6H.4.2).
-                if (far) stage.rulerLabels[stage.rulerLabels.length - 1].el.hidden = phase !== 'done';
+                if (far) stage.rulerLabels[stage.rulerLabels.length - 1].el.hidden = phase !== 'done' || layout.tight;
                 const showGap = phase === 'one-second';
                 stage.gap.visible = showGap;
                 if (showGap) { stage.gap.scale.set(Math.max(g.surface - x, 1e-9), GAP_PX * perPx, 1); stage.gap.position.set((x + g.surface) / 2, 0, 11); }
@@ -3538,7 +3544,7 @@
                 }
                 if (journey === 'fifteen') {
                     const f = stage.g15, d15 = LightData.lightDistanceKm(FIFTEEN_S);
-                    const view15 = layout ? { perPx: layout.perPx, y: layout.y, earth: { x: layout.sx(f.earthX), diameterPx: layout.sizes.earth, ring: stage.rings.earth.visible }, source: layout.sx(0), end: layout.sx(f.end),
+                    const view15 = layout ? { perPx: layout.perPx, y: layout.y, tight: !!layout.tight, earth: { x: layout.sx(f.earthX), diameterPx: layout.sizes.earth, ring: stage.rings.earth.visible }, source: layout.sx(0), end: layout.sx(f.end),
                         front: layout.sx(Math.min(LightSim.kmToWorld(km), f.end)), unitPx: f.unit / layout.perPx, orbitRadiusPx: f.orbitR / layout.perPx, scalePx: LightSim.kmToWorld(1000000) / layout.perPx,
                         milestones: stage.mileLabels.map(item => ({ seconds: item.seconds, km: item.km, x: layout.sx(LightSim.kmToWorld(item.km)), reached: item.el.classList.contains('is-reached') })),
                         ruler: [...stage.unitTicks.map(t => ({ unit: Math.round(t.position.x / f.unit), x: layout.sx(t.position.x) })), { unit: f.units, x: layout.sx(f.end) }] } : null;

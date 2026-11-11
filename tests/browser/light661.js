@@ -204,14 +204,15 @@ const primary = pg => pg.evaluate(() => document.querySelector('.learn-light-box
     check('hidden tab / keyboard / reduced motion: no JS errors', errors.length === 0, errors.join('; '));
     await context.close();
   }
-  // E. Isolation: production content (no fixture) does not contain the planets journey; "pohyb" stays inactive.
+  // E. Production content (no fixture), Phase 6H.6.3 activation candidate.
   {
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 } }), pg = await context.newPage();
     await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') })); await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
     await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600); await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2500);
-    const prod = await pg.evaluate(() => { Learn.enter(); const card = [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Pohyb vo vesmíre');
-      return { button: !!card?.querySelector('button:not([disabled])'), planets: window.LearnContent.lessons.flatMap(l => l.steps).filter(s => s.experiment?.journey === 'planets').length }; });
-    check('production: "Pohyb vo vesmíre" inactive and no lesson uses the planets journey (test fixtures only)', !prod.button && prod.planets === 0, JSON.stringify(prod));
+    // Phase 6H.6.3 activation candidate: the planets journey is used exactly once, by the real sixth lesson (until 6H.6.2: test fixtures only).
+    const prod = await pg.evaluate(() => { Learn.enter(); const card = [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Svetlo a vesmírne vzdialenosti');
+      return { button: !!card?.querySelector('button:not([disabled])'), planets: window.LearnContent.lessons.flatMap(l => l.steps.filter(s => s.experiment?.journey === 'planets').map(s => `${l.id}:${s.id}`)) }; });
+    check('production: the sixth topic "Svetlo a vesmírne vzdialenosti" is active; the planets journey is used exactly once, by its step "k-planetam"', prod.button && JSON.stringify(prod.planets) === JSON.stringify(['pohyb:k-planetam']), JSON.stringify(prod));
     await context.close();
   }
   console.log('NOTES\n' + notes.join('\n'));

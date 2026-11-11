@@ -268,14 +268,14 @@ const click = (pg, focus) => pg.click(`[data-focus="${focus}"]`, { force: true }
     check('no JS or WebGL errors (reduced motion)', errors.length === 0, errors.join('; '));
     await context.close();
   }
-  // 5. Catalogue unchanged (real content, no fixture): five topics, "Pohyb vo vesmíre" inactive.
+  // 5. Real catalogue (no fixture; Phase 6H.6.3 activation candidate): six active topics (until 6H.6.2: "Pohyb vo vesmíre" inactive).
   {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } }), pg = await ctx.newPage();
     await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') })); await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
     await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600); await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2200);
     await pg.evaluate(() => Learn.enter()); await pg.waitForTimeout(300);
     const topics = await pg.evaluate(() => [...document.querySelectorAll('.learn-topic')].map(c => ({ t: c.querySelector('h3').textContent, on: !!c.querySelector('button') && !c.querySelector('button').disabled })));
-    check('real catalogue: five topics active, "Pohyb vo vesmíre" inactive', topics.length === 6 && topics.filter(t => t.on).length === 5 && topics.find(t => t.t === 'Pohyb vo vesmíre').on === false, JSON.stringify(topics));
+    check('real catalogue (Phase 6H.6.3 activation candidate): six topics active, the sixth "Svetlo a vesmírne vzdialenosti"', topics.length === 6 && topics.filter(t => t.on).length === 6 && topics[5].t === 'Svetlo a vesmírne vzdialenosti' && topics[5].on === true, JSON.stringify(topics));
     await ctx.close();
   }
   if (notes.length) console.log('NOTES\n' + notes.join('\n'));

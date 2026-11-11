@@ -40,6 +40,9 @@ window.Learn = (() => {
   // Kept for the lesson session like the tip; it never reaches the stage (physics, camera and ruler are unaffected).
   const LIGHT_CHOICES = Object.freeze([3, 12, 100]);
   let lightChoice = null;
+  // The last announced light-experiment moment of the current step (Phase 6H.6.3): a panel rebuilt within the same step (e.g. the
+  // explanation opened or closed) must not announce the same result again.
+  let lightAnnounced = null;
   // Sun-to-planets journey (Phase 6H.5.3.1): two optional guesses (light time to Earth, then to Neptune), as times in seconds; kept for the
   // lesson session, cleared by "Opakovať pokus". They never reach the stage. The answer is the option nearest to the LightData time (in
   // ratio, the options being 60-fold apart), so no physical value is repeated here.
@@ -171,6 +174,7 @@ window.Learn = (() => {
         if (s.demo && ( !['overview','focus'].includes(s.demo.kind) || (s.demo.kind === 'focus' && !adapter.hasBody(s.demo.body)))) throw Error('Invalid lesson demonstration');
         if (s.demo?.motion !== undefined && (typeof s.demo.motion !== 'boolean' || s.demo.kind !== 'focus' || s.type === 'experiment')) throw Error('Invalid lesson demonstration');
         if (s.type === 'observe' && !optionalText(s.note)) throw Error('Invalid lesson step');
+        if (s.transition !== undefined && !(lightTravel(s) && filled(s.transition))) throw Error('Invalid lesson step'); // Phase 6H.6.3
         if (s.demo?.view && (s.demo.kind !== 'focus' || !Object.prototype.hasOwnProperty.call(views, s.demo.view) || views[s.demo.view] !== s.demo.body)) throw Error('Invalid lesson view');
         if (s.type === 'experiment') {
           const kind = s.experiment?.kind;
@@ -539,7 +543,7 @@ window.Learn = (() => {
     }
     return { lead: PLANET_QUESTIONS.earth, lines: state.interrupted ? ['Odpočítavanie sme zastavili, keď si odišiel zo stránky. Svetlo vyšleš znova tlačidlom.'] : tight ? [] : ['Tipni si a vyšli svetlo. Pri Marse sa pokus na chvíľu zastaví.'] };
   }
-  function lightCopy(state, tight = false) {
+  function lightStateCopy(state, tight = false) {
     if (state.journey === 'planets') return planetsCopy(state, tight);
     // The 15-second journey (Phase 6H.4.1): scene foundation only; its prediction and result feedback come in Phase 6H.4.2.
     if (state.journey === 'fifteen') {
@@ -577,10 +581,18 @@ window.Learn = (() => {
     const hint = state.interrupted ? 'Odpočítavanie sme zastavili, keď si odišiel zo stránky. Svetlo vyšleš znova tlačidlom.' : tight ? null : 'Posuň posúvač na miesto, kam podľa teba svetlo doletí. Nemusíš byť presný.';
     return { lead: 'Kam sa podľa teba dostane svetlo za jednu sekundu?', lines: hint ? [hint] : [] };
   }
+  // A light step's transition (Phase 6H.6.3): the short lead-in from the previous experiment, shown at the top of the panel's
+  // experiment box while the experiment is ready (before the light starts), on every layout; never in the explanation only. It is
+  // not repeated once the light runs.
+  function lightCopy(state, tight = false) {
+    const copy = lightStateCopy(state, tight);
+    return state.phase === 'ready' && !state.interrupted && state.transition ? { ...copy, transition: state.transition } : copy;
+  }
   function fillLight(ui, copy) {
     ui.lead.textContent = copy.lead ?? ''; ui.lead.hidden = !copy.lead;
     if (ui.ask) { ui.ask.textContent = copy.ask ?? ''; ui.ask.hidden = !copy.ask; } // planets: the second question below the Earth result
     if (ui.feedback) { ui.feedback.textContent = copy.feedback ?? ''; ui.feedback.hidden = !copy.feedback; } // planets: the guess feedback under the result
+    if (ui.transitionEl) { ui.transitionEl.textContent = copy.transition ?? ''; ui.transitionEl.hidden = !copy.transition; }
     ui.message.replaceChildren(...copy.lines.map(line => el('p', line)));
   }
   // Planets: the Earth question's choices up to the Mars stop, then the Neptune question's; compact and side panels show a row only
@@ -595,12 +607,13 @@ window.Learn = (() => {
     if (ui.held || ui.box.offsetHeight <= 2) return;
     ui.held = true; ui.output.textContent = 'Ešte si netipol'; // the tip row as it will read
     const longest = { earth: PLANET_GUESSES.earth[2].seconds, neptune: PLANET_GUESSES.neptune[0].seconds }; // the longer feedback sentences
-    const samples = ui.journey === 'fifteen' ? [{ journey: 'fifteen', phase: 'ready' }, { journey: 'fifteen', phase: 'done', choice: 100 }, { journey: 'fifteen', phase: 'first', choice: 100 }]
+    const samples = (ui.journey === 'fifteen' ? [{ journey: 'fifteen', phase: 'ready' }, { journey: 'fifteen', phase: 'done', choice: 100 }, { journey: 'fifteen', phase: 'first', choice: 100 }]
       : ui.journey === 'planets' ? [{ journey: 'planets', phase: 'ready' }, { journey: 'planets', phase: 'mars', guess: longest }, { journey: 'planets', phase: 'neptune', guess: longest }, { journey: 'planets', phase: 'second', guess: longest }]
-      : [{ phase: 'ready', prediction: null }, { phase: 'one-second', prediction: { verdict: 'shorter', km: 376000 } }, { phase: 'arrived', seconds: LightData.earthMoonTravelSeconds() }];
+      : [{ phase: 'ready', prediction: null }, { phase: 'one-second', prediction: { verdict: 'shorter', km: 376000 } }, { phase: 'arrived', seconds: LightData.earthMoonTravelSeconds() }])
+      .map(sample => sample.phase === 'ready' ? { ...sample, transition: ui.transition } : sample); // the ready state as it will read
     // Planets on phones (Phase 6H.5.3.2): the panel holds two heights, one for the question and result states and a shorter one for
     // the countdown and the runs, so more of the stage is free while the light flies. The stage re-frames only at those changes.
-    const modes = ui.journey === 'planets' && ui.compact;
+    const modes = ui.journey === 'planets' && ui.compact, readyMode = !modes && ui.compact && !!ui.transition;
     if (modes) samples.push({ journey: 'planets', phase: 'countdown', guess: longest }, { journey: 'planets', phase: 'first', paused: true, pauseReason: 'hidden', guess: longest }, { journey: 'planets', phase: 'second', paused: true, guess: longest });
     const heights = samples.map(sample => {
       fillLight(ui, lightCopy(sample, ui.tight)); ui.pick.hidden = sample.phase !== 'ready' || ui.journey !== 'earth-moon';
@@ -610,7 +623,10 @@ window.Learn = (() => {
       ui.skip.hidden = !(reducedMotion.matches && !['arrived', 'neptune', 'second'].includes(sample.phase));
       return ui.box.getBoundingClientRect().height;
     });
-    if (modes) {
+    if (readyMode) { // phones: only the ready state holds the transition's extra height; runs and results keep their own
+      ui.heldModes = { ready: heights[samples.findIndex(x => x.phase === 'ready')], run: Math.max(...heights.filter((_, i) => samples[i].phase !== 'ready')) };
+      ui.box.style.minHeight = `${ui.heldModes.ready}px`;
+    } else if (modes) {
       const run = sample => ['countdown', 'first', 'second'].includes(sample.phase);
       ui.heldModes = { question: Math.max(...heights.filter((_, i) => !run(samples[i]))), run: Math.max(...heights.filter((_, i) => run(samples[i]))) };
       ui.box.style.minHeight = `${ui.heldModes.question}px`;
@@ -644,6 +660,8 @@ window.Learn = (() => {
     const ui = experimentUI;
     if (ui.journey === 'fifteen') state = { ...state, choice: lightChoice }; // the learner's guess, for the panel's words only
     if (ui.journey === 'planets') state = { ...state, guess: { ...planetGuess } }; // both guesses, for the panel's words only
+    ui.box.dataset.phase = state.phase; // state-scoped layout rules (Phase 6H.6.3.C: the Mars stop on short landscape)
+    if (ui.transition) state = { ...state, transition: ui.transition };
     holdLight(ui);
     const detail = lightDetail(state), detailKey = detail.join('|');
     if (ui.detailKey !== detailKey) { ui.detailKey = detailKey; ui.science.replaceChildren(...detail.map(text => el('p', text, 'learn-note'))); }
@@ -671,7 +689,7 @@ window.Learn = (() => {
     if (ui.output.textContent !== tipText) ui.output.textContent = tipText;
     ui.slider.setAttribute('aria-valuetext', tipKm === null ? 'Ešte si netipol' : `Môj tip: približne ${tipKm} od Zeme, ${lightTip} % cesty k Mesiacu`);
     // The held height may only grow (fonts or a longer text), so no later state can move the route back.
-    if (ui.heldModes) { const mode = running || state.phase === 'countdown' ? 'run' : 'question'; ui.heldMode = mode; ui.box.style.minHeight = `${ui.heldModes[mode]}px`; }
+    if (ui.heldModes) { const mode = 'ready' in ui.heldModes ? (state.phase === 'ready' && !state.interrupted ? 'ready' : 'run') : running || state.phase === 'countdown' ? 'run' : 'question'; ui.heldMode = mode; ui.box.style.minHeight = `${ui.heldModes[mode]}px`; }
     const height = ui.box.getBoundingClientRect().height;
     if (ui.held && height > parseFloat(ui.box.style.minHeight || '0') + 0.01) { ui.box.style.minHeight = `${height}px`; if (ui.heldModes) ui.heldModes[ui.heldMode] = height; }
     ui.primary.textContent = state.phase === 'countdown' ? (state.countdown ? `Pozor… ${state.countdown}` : 'Pozor…') : running ? (state.paused ? 'Pokračovať' : 'Pozastaviť')
@@ -686,8 +704,10 @@ window.Learn = (() => {
     if (ui.skip.hidden && ui.skip.contains(document.activeElement)) ui.primary.focus({ preventScroll: true });
     // One announcement per change of state, never during the run.
     const moment = state.phase === 'countdown' ? 'countdown' : running ? (state.paused ? 'paused' : 'running') : state.phase;
+    if (ui.moment === undefined && lightAnnounced?.session === session && lightAnnounced.step === step) ui.moment = lightAnnounced.moment;
     if (ui.moment !== moment) {
-      const previous = ui.moment; ui.moment = moment;
+      const previous = ui.moment; ui.moment = moment; lightAnnounced = { session, step, moment };
+      if (moment === 'ready' && ui.transition && !ui.transitionEl.hidden) revealTransition(ui);
       if (moment === 'countdown') announce('Pozor, svetlo vyrazí po odpočítaní: tri, dva, jeden.');
       else if (moment === 'running' && previous === 'countdown') announce('Svetlo vyrazilo.');
       else if (moment === 'running' && previous === 'paused') announce('Pokračujeme.');
@@ -699,14 +719,30 @@ window.Learn = (() => {
   }
   // Planets (Phase 6H.5.3.2): at the Mars stop and at Neptune, short landscape and desktop panels scroll just enough to show the
   // main action (and, where it fits, the last message line) without moving the result headline out of view. Never moves focus.
+  // The visible part of a scrolling panel: below the header when it stays in place (sticky side panels, Phase 6H.6.3.B).
+  function scrollView(scroller) {
+    const view = scroller.getBoundingClientRect(), header = root.querySelector('.learn-header');
+    const sticky = scroller === root && header && getComputedStyle(header).position === 'sticky';
+    return { top: sticky ? Math.max(view.top, header.getBoundingClientRect().bottom) : view.top, bottom: view.bottom };
+  }
   function revealPlanetResult(ui) {
     if (ui.compact) return; // phones: the held panel shows everything
     const scroller = root.dataset.layout === 'side' ? root : root.querySelector('.learn-body');
     if (!scroller) return;
-    const view = scroller.getBoundingClientRect(), lead = ui.lead.getBoundingClientRect(), action = ui.primary.getBoundingClientRect();
+    const view = scrollView(scroller), lead = ui.lead.getBoundingClientRect(), action = ui.primary.getBoundingClientRect();
+    // The result above the visible part (e.g. scrolled away earlier in the step): bring it back to the top if the action still fits.
+    const toLead = lead.top - view.top - 4;
+    if (toLead < 0 && action.bottom - toLead <= view.bottom - 8) { scroller.scrollTop += toLead; return; }
     const last = (ui.message.lastElementChild ?? ui.primary).getBoundingClientRect();
     const keepLead = Math.max(0, lead.top - view.top - 4), forAction = Math.max(0, action.bottom - view.bottom + 8), forLast = Math.max(0, last.bottom - view.bottom + 8);
     scroller.scrollTop += Math.max(forAction, Math.min(forLast, keepLead)); // the action always; the last line only while the headline stays
+  }
+  // Short landscape side panels (Phase 6H.6.3): when a step with a transition is ready, the panel scrolls so the transition is at its
+  // top and the guesses and the main action below it are in view (the header is one swipe up). Never moves focus.
+  function revealTransition(ui) {
+    if (root.dataset.layout !== 'side') return;
+    const view = scrollView(root), top = ui.transitionEl.getBoundingClientRect().top, action = ui.primary.getBoundingClientRect();
+    root.scrollTop += Math.max(0, top - view.top - 4, action.bottom - view.bottom + 6); // the transition at the top; the action always in view
   }
   function lightAction(action) {
     const current = active && lesson?.steps[step];
@@ -762,8 +798,9 @@ window.Learn = (() => {
     document.body.classList.toggle('is-learn-classify', !!sorting);
     document.body.classList.toggle('is-learn-moon', !!lesson && earthMoonStep(lesson.steps[step]));
     if (lesson && sideStep(lesson.steps[step]) && sideTourLayout.matches) root.dataset.layout = 'side'; else delete root.dataset.layout;
+    if (lesson) root.dataset.lesson = lesson.id; else delete root.dataset.lesson; // lesson-scoped layout rules (Phase 6H.6.3.B)
     const header = el('header', null, 'learn-header');
-    const heading = el('h2', compactExperiment ? (dayNight(lesson.steps[step]) ? 'Pokus so Zemou' : moonPhases(lesson.steps[step]) ? 'Fázy Mesiaca' : planetsStep(lesson.steps[step]) ? 'Svetlo k planétam' : lesson.steps[step].title) : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
+    const heading = el('h2', compactExperiment ? (dayNight(lesson.steps[step]) ? 'Pokus so Zemou' : moonPhases(lesson.steps[step]) ? 'Fázy Mesiaca' : planetsStep(lesson.steps[step]) ? 'Svetlo k planétam' : lesson.steps[step].title) : lesson && planetsStep(lesson.steps[step]) && sideTourLayout.matches ? 'Svetlo k planétam' /* short landscape: one-line heading (Phase 6H.6.3.B) */ : tour ? tour.stops[stop].title : sorting ? itemName || sorting.doneTitle || 'Všetky planéty sú roztriedené.' : lesson ? lesson.steps[step].title : 'Čo dnes objavíme?');
     heading.id = 'learn-heading'; heading.tabIndex = -1;
     const titles = el('div'), eyebrow = el('p', null, 'learn-eyebrow');
     if (lesson) {
@@ -1006,9 +1043,10 @@ window.Learn = (() => {
         }
         // Order: headline, slider or guesses (ready only for the slider), actions, then the explanation, so the main action never
         // drops below the fold.
-        const box = el('div', null, 'learn-light-box'); box.append(lead, ...(choiceSets ? [feedback, ask, choiceSets.earth, choiceSets.neptune] : choices ? [choices] : [pick]), actions, message);
+        const transitionEl = el('p', null, 'learn-light-transition'); transitionEl.hidden = true;
+        const box = el('div', null, 'learn-light-box'); box.append(transitionEl, lead, ...(choiceSets ? [feedback, ask, choiceSets.earth, choiceSets.neptune] : choices ? [choices] : [pick]), actions, message);
         const journey = s.experiment.journey === 'fifteen' || s.experiment.journey === 'planets' ? s.experiment.journey : 'earth-moon';
-        experimentUI = { kind: 'light-travel', journey, box, lead, ask, feedback, message, pick, choices, choiceSets, slider, output, primary, secondary, skip, tight: compactExperiment || root.dataset.layout === 'side', compact: compactExperiment };
+        experimentUI = { kind: 'light-travel', journey, transition: s.transition ?? null, transitionEl, box, lead, ask, feedback, message, pick, choices, choiceSets, slider, output, primary, secondary, skip, tight: compactExperiment || root.dataset.layout === 'side', compact: compactExperiment };
         const details = el('div', null, 'learn-experiment-details'); details.id = 'learn-experiment-details';
         details.hidden = compactExperiment && !experimentDetailsOpen;
         if (compactExperiment) { details.tabIndex = 0; details.setAttribute('role', 'region'); details.setAttribute('aria-label', 'Vysvetlenie pokusu'); }
@@ -1075,6 +1113,7 @@ window.Learn = (() => {
       root.append(footer);
     }
     const collapsed = lesson && !expanded && sheetLayout.matches && !compactExperiment;
+    root.style.scrollPaddingTop = getComputedStyle(header).position === 'sticky' ? `${header.offsetHeight + 6}px` : ''; // focus never lands under a sticky header
     body.inert = !!collapsed; adapter.sync(); syncExperiment();
     if (focusKey === false) return;
     const preferred = focusKey && root.querySelector(`[data-focus="${focusKey}"]:not(:disabled)`);

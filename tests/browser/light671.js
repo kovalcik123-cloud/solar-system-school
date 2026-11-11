@@ -1,18 +1,21 @@
-// Phase 6H.6.1 whole-lesson integration harness: the complete eight-step Light Laboratory lesson (test-only fixture
-// fixtures/light-lesson.js; the app's own content is unchanged and the real "pohyb" topic stays inactive).
-// Covers the full sequence forwards and backwards, journey switching and cleanup, predictions and session state, leaving and
-// returning, Explore and Quiz, focus and announcements, hidden tab, reduced motion, journey validation, at four sizes.
+// Whole-lesson integration harness (Phase 6H.6.1; Phase 6H.6.3: the real, activated sixth lesson "Svetlo a vesmírne vzdialenosti",
+// topic id "pohyb", from learn-content.sk.js – no fixture). Covers the full sequence forwards and backwards, journey switching and
+// cleanup, the transitions shown before the 15 s and planets experiments, predictions and session state, leaving and returning,
+// Explore and Quiz, focus and announcements, hidden tab, reduced motion, at four sizes. The test-only fixture
+// fixtures/light-lesson.js (identical to the real lesson) is used only for invalid configurations and fixture coexistence.
 const { chromium } = require('playwright');
 const http = require('http'), fs = require('fs'), path = require('path');
 const env = require('./env'), { inject, lesson } = require('./fixtures/light-lesson');
 const ROOT = env.ROOT, OUT = env.out('light671'), PORT = Number(process.env.PORT || 8955);
 const server = http.createServer((q, r) => { const u = decodeURIComponent(q.url.split('?')[0]); fs.readFile(path.join(ROOT, u === '/' ? 'index.html' : u), (e, d) => { if (e) { r.writeHead(404); r.end(); } else r.end(d); }); }).listen(PORT);
 let failures = 0, passes = 0;
-const check = (label, ok, detail = '') => { ok ? passes++ : failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${!ok && detail ? '  — ' + String(detail).slice(0, 1200) : ''}`); };
+const check = (label, ok, detail = '') => { ok ? passes++ : failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${!ok && detail ? '  — ' + String(detail).slice(0, process.env.FULL ? 6000 : 1200) : ''}`); };
 const TITLES = lesson.steps.map(s => s.title), TOPIC = 'Svetlo a vesmírne vzdialenosti';
 const REJECTED = /^Learn: lesson "pohyb" is not available/;
+// SHA-256 of the five existing lessons, their topic cards and the planet groups at Phase 6H.6 (commit a953c9c): must stay unchanged.
+const EXISTING_HASH = '334fe0cba08aadada25dce743a679a7c300c94affaa15241bdb1066039d77cec';
 
-async function open(browser, w, h, { fixture = inject(), options = {} } = {}) {
+async function open(browser, w, h, { fixture = null, options = {} } = {}) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 500, ...options }), pg = await context.newPage(), errors = [], rejected = [];
   pg.on('pageerror', e => errors.push(e.message));
   pg.on('console', m => { if (m.type() !== 'error' && !/THREE\.WebGL|shader/i.test(m.text())) return; if (REJECTED.test(m.text())) rejected.push(m.text()); else errors.push('console: ' + m.text()); });
@@ -48,6 +51,36 @@ const S = () => {
     lead: document.querySelector('.learn-light-lead:not(.learn-light-ask)')?.textContent?.replace(/ /g, ' ') ?? null, body: document.getElementById('learn-root')?.innerText.replace(/ /g, ' ') ?? '' };
 };
 const snap = pg => pg.evaluate(`(${S})()`);
+// The transition before an experiment (Phase 6H.6.3): its text, whether it is in view inside the panel without scrolling (and without
+// opening the explanation), whether the guesses and the main action are in view too, and any stage text under the panel.
+const T = () => {
+  const root = document.getElementById('learn-root'), body = root.querySelector('.learn-body'), scroller = root.dataset.layout === 'side' ? root : body;
+  const p = root.getBoundingClientRect(), sv = scroller.getBoundingClientRect(), view = { t: Math.max(p.top, sv.top), b: Math.min(p.bottom, sv.bottom, innerHeight) };
+  const inView = e => { if (!e || e.hidden || e.closest('[hidden]') || !e.getClientRects().length) return false; const b = e.getBoundingClientRect(); return b.top >= view.t - 0.5 && b.bottom <= view.b + 0.5; };
+  const tr = root.querySelector('.learn-light-transition'), sets = [...root.querySelectorAll('.learn-light-box fieldset')].filter(f => !f.hidden);
+  const under = [...document.querySelectorAll('#light-stage-overlay > div, #light-stage-overlay .light-scale span')].filter(e => !e.hidden && !e.closest('[hidden]') && e.getBoundingClientRect().width > 0)
+    .filter(e => { const r = e.getBoundingClientRect(); return r.left < p.right - 1 && p.left < r.right - 1 && r.top < p.bottom - 1 && p.top < r.bottom - 1; }).map(e => e.className);
+  return { text: tr && !tr.hidden && !tr.closest('[hidden]') ? tr.textContent : null, inView: inView(tr), choices: sets.length > 0 && sets.every(inView), primary: inView(root.querySelector('.learn-light-box .learn-primary')), details: !root.querySelector('#learn-experiment-details')?.hidden, under };
+};
+const tr = pg => pg.evaluate(`(${T})()`);
+// Phase 6H.6.3.B. The panel header (sticky on short landscape): heading and buttons visible and not covered; the main action in view;
+// every focusable panel control, when focused, fully visible and not hidden under the header. And the summary's three actions.
+const HEAD = () => {
+  const root = document.getElementById('learn-root'), header = root.querySelector('.learn-header'), p = root.getBoundingClientRect(), h = header.getBoundingClientRect();
+  const clear = e => { if (!e || !e.getClientRects().length) return false; const b = e.getBoundingClientRect(); if (b.top < p.top - 0.5 || b.bottom > Math.min(p.bottom, innerHeight) + 0.5) return false;
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 10)); return !!hit && (e === hit || e.contains(hit)); };
+  const action = root.querySelector('.learn-light-box .learn-primary') ?? root.querySelector('.learn-footer .learn-primary');
+  return { sticky: getComputedStyle(header).position === 'sticky', heading: clear(document.getElementById('learn-heading')), close: [...header.querySelectorAll('button')].every(clear), action: action ? clear(action) && action.getBoundingClientRect().top >= h.bottom - 0.5 : null };
+};
+const head = pg => pg.evaluate(`(${HEAD})()`);
+async function focusSweep(pg) { // Tab through every control of the panel; each one must be fully visible (not under the sticky header) when focused
+  const names = await pg.evaluate(() => [...document.querySelectorAll('#learn-root button, #learn-root input')].filter(e => e.getClientRects().length && !e.disabled && !e.closest('[hidden],[inert]')).length);
+  await pg.evaluate(() => document.getElementById('learn-heading').focus()); const bad = [];
+  for (let i = 0; i < names + 2; i++) { await pg.keyboard.press('Tab'); const r = await pg.evaluate(() => { const a = document.activeElement, root = document.getElementById('learn-root'); if (!root.contains(a)) return null; const t = a.type === 'radio' ? a.closest('label') : a, b = t.getBoundingClientRect(), p = root.getBoundingClientRect();
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 10)); return { name: (t.textContent || '').trim().slice(0, 20), ok: b.top >= p.top - 0.5 && b.bottom <= Math.min(p.bottom, innerHeight) + 0.5 && !!hit && (t === hit || t.contains(hit)) }; });
+    if (r && !r.ok) bad.push(r.name); }
+  return bad;
+}
 // Each journey shows only its own scene objects and panel controls; question and summary steps show no light stage at all.
 function journeyClean(s, expected) {
   if (!expected) return !s.stage && s.overlayHidden && !s.bodyClass && !s.slider && !s.fifteenChoices && !s.planetChoices;
@@ -66,15 +99,17 @@ const JOURNEY = [null, 'earth-moon', 'fifteen', 'planets', null, null, null, nul
     await fake(pg); await advance(pg, 50);
     await pg.evaluate(() => Learn.enter()); await pg.waitForTimeout(300);
     const cards = await topics(pg), card = cards.find(c => c.t === TOPIC);
-    check(`${tag} topic list (test-only topic card): "${TOPIC}" with its description, about 9 minutes and a start button; the five existing lessons unchanged`,
-      !!card && card.button && card.text.includes('Zisti, ako ďaleko doletí svetlo za sekundu') && card.text.includes('Približne 9 min') && cards.slice(0, 5).every(c => c.button) && cards.length === 6, JSON.stringify(cards.map(c => c.t)));
+    check(`${tag} topic list: the sixth topic "${TOPIC}" is active with its description, about 9 minutes and a start button; six active lessons; no "undefined"`,
+      !!card && card === cards[5] && card.button && card.text.includes('Zisti, ako ďaleko doletí svetlo za sekundu') && card.text.includes('Približne 9 min') && cards.every(c => c.button) && cards.length === 6 && !cards.some(c => /undefined/.test(c.text)), JSON.stringify(cards.map(c => c.t)));
+    await pg.evaluate(t => [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === t).scrollIntoView({ block: 'center' }), TOPIC); await pg.waitForTimeout(200);
     await shot('0-topics');
     await startLesson(pg);
     // Forward through all eight steps.
     const forward = [];
     for (let i = 0; i < 8; i++) {
       let s = await snap(pg);
-      const expectedHeading = i >= 1 && i <= 3 && (w < 701 && h > 520) ? (i === 3 ? 'Svetlo k planétam' : TITLES[i]) : TITLES[i];
+      // Phones show the short planets heading; since Phase 6H.6.3.B also the short landscape side panel (one header row).
+      const expectedHeading = i === 3 && ((w < 701 && h > 520) || w === 844) ? 'Svetlo k planétam' : TITLES[i];
       check(`${tag} step ${i + 1}/8 "${TITLES[i]}": heading "${s.heading}", focus on the heading${JOURNEY[i] ? `, light stage "${JOURNEY[i]}" with only its own objects and controls` : ', no light stage or overlay'}`,
         s.step === i && s.heading === expectedHeading && (i === 0 || s.focus === 'learn-heading') && journeyClean(s, JOURNEY[i]), JSON.stringify({ step: s.step, heading: s.heading, focus: s.focus, stage: s.stage, overlayHidden: s.overlayHidden, shown: s.shown, slider: s.slider, f: s.fifteenChoices, p: s.planetChoices }));
       if (i === 0) {
@@ -88,29 +123,79 @@ const JOURNEY = [null, 'earth-moon', 'fifteen', 'planets', null, null, null, nul
         check(`${tag} 1 s experiment: result "${s.lead}"`, s.stage.phase === 'one-second' && s.lead === 'Ani svetlo nestihlo doraziť!');
         await shot('2-one-second');
       }
+      if (i === 2 || i === 3) { // the transition, before the light starts: in view on every layout, with the guesses and the main action
+        const t = await tr(pg);
+        check(`${tag} ${i === 2 ? '15 s' : 'planets'} experiment ready: the transition "${t.text}" is in view without opening "Vysvetlenie"; guesses and the main action in view; no stage text under the panel`,
+          t.text === lesson.steps[i].transition && t.inView && t.choices && t.primary && t.under.length === 0 && (w > 700 || h <= 520 || !t.details), JSON.stringify(t));
+        await shot(i === 2 ? '3a-fifteen-ready' : '4a-planets-ready');
+      }
+      if (i === 1) check(`${tag} 1 s experiment: no transition (it opens the experiments)`, (await tr(pg)).text === null);
+      if (i === 2) { // Phase 6H.6.3.B: on a short free area the 15 s scene keeps Earth, the light and the milestones in its ready state
+        const f = await pg.evaluate(() => { const v = lightStage.state().view, p = document.getElementById('learn-root').getBoundingClientRect(), vis = sel => [...document.querySelectorAll(sel)].filter(e => !e.hidden && e.getClientRects().length);
+          const clear = e => e.getBoundingClientRect().bottom <= p.top - 1; return { tight: v.tight, earth: vis('#light-stage-overlay .light-label').filter(e => e.textContent === 'Zem').every(clear), miles: vis('#light-stage-overlay .light-mile').length, milesClear: vis('#light-stage-overlay .light-mile').every(clear), front: v.front, earthX: v.earth.x }; });
+        if (w === 390 && h === 667) {
+          check(`${tag} 15 s ready (transition shown): the short-area layout keeps Earth and the four milestones clear of the panel`, f.tight && f.earth && f.miles === 4 && f.milesClear, JSON.stringify(f));
+          await pg.evaluate(() => document.querySelector('.learn-light-box .learn-primary').click()); await advance(pg, 3000); await advance(pg, 50, 3); await play(pg, 1200);
+          const run = await pg.evaluate(() => { const st = lightStage.state(), p = document.getElementById('learn-root').getBoundingClientRect(), t = document.querySelector('#light-stage-overlay .light-time'), sc = document.querySelector('#light-stage-overlay .light-scale span');
+            return { phase: st.phase, tight: st.view.tight, time: !t.hidden && t.getBoundingClientRect().bottom <= p.top - 1 ? t.textContent : null, scale: !sc.closest('[hidden]') && sc.getBoundingClientRect().bottom <= p.top - 1 }; });
+          check(`${tag} 15 s run: the panel is shorter again and the approved layout returns (readout "${run.time}", scale bar) — the scene changes only at the start`, run.phase === 'first' && !run.tight && !!run.time && run.scale, JSON.stringify(run));
+          await pg.evaluate(() => lightStage.reset()); await advance(pg, 50, 3);
+        } else check(`${tag} 15 s ready: enough room, the normal 15 s layout (no short-area layout)`, !f.tight, JSON.stringify(f));
+      }
       if (i === 2) {
         await clickLabel(pg, 'fieldset.learn-light-choices', 'Asi 12-krát'); await advance(pg, 50);
         await pg.evaluate(() => lightStage.skip()); await advance(pg, 50, 3); s = await snap(pg);
-        check(`${tag} 15 s experiment: guess "Asi 12-krát" and result "${s.lead}"`, s.stage.phase === 'done' && /^Za 15 sekúnd svetlo preletelo/.test(s.lead) && s.body.includes('Správny odhad!'), s.body.slice(0, 400));
+        check(`${tag} 15 s experiment: guess "Asi 12-krát" and result "${s.lead}"; the transition is not repeated`, s.stage.phase === 'done' && /^Za 15 sekúnd svetlo preletelo/.test(s.lead) && s.body.includes('Správny odhad!') && (await tr(pg)).text === null, s.body.slice(0, 400));
         await shot('3-fifteen');
       }
       if (i === 3) {
         await clickLabel(pg, 'fieldset[data-question="earth"]', 'Asi 8 minút'); await advance(pg, 50);
         await pg.evaluate(() => lightStage.skip()); await advance(pg, 50, 3);
+        const m = await tr(pg);
+        check(`${tag} planets Mars stop: the transition is not repeated; the Neptune question and "Pokračovať k Neptúnu" in view; no stage text under the panel`, m.text === null && m.choices && m.primary && m.under.length === 0, JSON.stringify(m));
+        await shot('4b-mars');
+        if (w === 844) { const hd = await head(pg);
+          // Phase 6H.6.3.C: as the Mars stop opens (no manual swipe), the Earth result, the Neptune question, its three answers (44 px
+          // touch targets) and "Pokračovať k Neptúnu" are all in view below the fixed header; the feedback sentence follows by scrolling.
+          const mv = await pg.evaluate(() => { const root = document.getElementById('learn-root'), hb = root.querySelector('.learn-header').getBoundingClientRect().bottom, p = root.getBoundingClientRect();
+            const seen = e => { if (!e || e.hidden || !e.getClientRects().length) return false; const b = e.getBoundingClientRect(); if (b.top < hb - 0.5 || b.bottom > Math.min(p.bottom, innerHeight) + 0.5) return false; const hit = document.elementFromPoint(b.left + 8, b.top + b.height / 2); return !!hit && (e === hit || e.contains(hit)); };
+            const labels = [...root.querySelectorAll('fieldset[data-question="neptune"] label')];
+            return { result: seen(root.querySelector('.learn-light-lead:not(.learn-light-ask)')), resultText: root.querySelector('.learn-light-lead:not(.learn-light-ask)').textContent.replace(/\u00a0/g, ' '), ask: seen(root.querySelector('.learn-light-ask')), answers: labels.length === 3 && labels.every(seen), targets: labels.map(l => Math.round(l.getBoundingClientRect().height)), action: seen(root.querySelector('.learn-light-box .learn-primary')), feedback: !!root.querySelector('.learn-light-feedback:not([hidden])') }; });
+          await pg.evaluate(() => document.querySelector('.learn-light-feedback').scrollIntoView({ block: 'nearest' })); await pg.waitForTimeout(100); // the panel's scroll padding keeps it clear of the header
+          const fb = await pg.evaluate(() => { const r = document.getElementById('learn-root'), f = r.querySelector('.learn-light-feedback'), b = f.getBoundingClientRect(), hb = r.querySelector('.learn-header').getBoundingClientRect().bottom; return b.top >= hb - 0.5 && b.bottom <= r.getBoundingClientRect().bottom + 0.5; });
+          check(`${tag} Mars stop: without a swipe the result "${mv.resultText}", the Neptune question, its three answers (${mv.targets.join('/')} px) and "Pokračovať k Neptúnu" are in view below the fixed header; the feedback is reachable by scrolling`,
+            hd.sticky && hd.heading && hd.close && mv.result && mv.resultText === 'K Zemi letelo svetlo 8 min 19 s.' && mv.ask && mv.answers && mv.targets.every(t => t >= 44) && mv.action && mv.feedback && fb, JSON.stringify({ hd, mv, fb }));
+          const bad = await focusSweep(pg);
+          check(`${tag} Mars stop: Tab shows every control fully, none under the header`, bad.length === 0, JSON.stringify(bad)); }
         await clickLabel(pg, 'fieldset[data-question="neptune"]', 'Asi 4 hodiny'); await advance(pg, 50);
         await pg.evaluate(() => lightStage.skip()); await advance(pg, 50, 3); s = await snap(pg);
         check(`${tag} planets experiment: both guesses and the Neptune result "${s.lead}"`, s.stage.phase === 'neptune' && s.lead === 'K Neptúnu letelo svetlo 4 h 10 min 5 s!' && s.body.includes('Správne! Svetlo letí k Neptúnu asi 4 hodiny.'), s.body.slice(0, 400));
-        await shot('4-planets');
+        await shot('4c-neptune');
+        if (w < 701 && h > 520) { // phones: the explanation as a reading view, then closed again
+          await pg.evaluate(() => document.querySelector('.learn-expand').click()); await advance(pg, 50, 3);
+          const rv = await pg.evaluate(() => { const d = document.getElementById('learn-experiment-details'), root = document.getElementById('learn-root').getBoundingClientRect(); return { open: !d.hidden, text: d.innerText.replace(/\u00a0/g, ' '), inView: root.top >= 0 && root.bottom <= innerHeight }; });
+          check(`${tag} explanation opened at the Neptune result: the eight light times and the playback note readable; the panel stays on screen`, rv.open && rv.inView && /Neptún 4 h 10 min 5 s/.test(rv.text) && /600-krát/.test(rv.text), JSON.stringify(rv).slice(0, 300));
+          await shot('4d-explanation');
+          await pg.evaluate(() => document.querySelector('.learn-expand').click()); await advance(pg, 50, 3);
+        }
       }
       if (i >= 4 && i <= 6) {
         const q = lesson.steps[i], wrong = q.options.find(o => o.id !== q.correct).id;
         const a1 = await answer(pg, wrong); await retry(pg); await pg.waitForTimeout(150); const a2 = await answer(pg, q.correct);
         check(`${tag} question "${q.title}": a wrong answer gets the hint and keeps Next locked; the right one gets "${a2.feedback.slice(0, 40)}…" and unlocks Next`, a1.feedback === q.incorrectFeedback && !a1.next && a2.feedback === q.correctFeedback && a2.next, JSON.stringify([a1, a2]));
         await shot(`${5 + i - 4}-question-${i - 3}`);
+        if (w === 844) { const hd = await head(pg), bad = await focusSweep(pg);
+          check(`${tag} question "${q.title}" after the answer: the heading and Zavrieť stay visible above the scrolled feedback; Tab shows every control fully`, hd.sticky && hd.heading && hd.close && bad.length === 0, JSON.stringify({ hd, bad })); }
       }
       if (i === 6) await roundTrip(); // the summary has no Back button: the backward pass starts at the last question
       if (i === 7) {
         check(`${tag} summary "${s.heading}": the four ideas`, lesson.steps[7].ideas.every(t => s.body.includes(t)), s.body.slice(0, 500));
+        const sum = await pg.evaluate(() => { const root = document.getElementById('learn-root'), body = root.querySelector('.learn-body'), scroller = root.dataset.layout === 'side' ? root : body, v = scroller.getBoundingClientRect(), p = root.getBoundingClientRect();
+          const header = root.querySelector('.learn-header'), top = getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().bottom : v.top;
+          return { buttons: [...body.querySelectorAll(':scope > button')].map(b => { const r = b.getBoundingClientRect(); return { t: b.textContent, inView: r.top >= Math.max(top, p.top) - 0.5 && r.bottom <= Math.min(v.bottom, p.bottom, innerHeight) + 0.5 }; }), scrolls: body.scrollHeight > body.clientHeight + 1 }; });
+        if (w > 900) check(`${tag} summary: "Späť na témy", "Objavuj" and "Otestuj sa" fully visible and clickable without scrolling`, sum.buttons.length === 3 && sum.buttons.every(b => b.inView) && !sum.scrolls, JSON.stringify(sum));
+        if (w === 844) { const hd = await head(pg), bad = await focusSweep(pg);
+          check(`${tag} summary: the heading stays visible while the panel scrolls; Tab reaches all three actions and shows each fully`, hd.sticky && hd.heading && bad.length === 0, JSON.stringify({ hd, bad })); }
         await shot('8-summary');
       }
       forward.push(s);
@@ -220,29 +305,38 @@ const JOURNEY = [null, 'earth-moon', 'fifteen', 'planets', null, null, null, nul
     check('missing journey: rejected and reported once ("has no light journey"); the topic shows "Pripravujeme"; no other error', rejected.length === 1 && /has no light journey/.test(rejected[0]) && errors.length === 0 && !card.button && card.text.includes('Pripravujeme') && s === null, JSON.stringify({ rejected, errors, card }));
     await context.close();
   }
-  // Phase 6H.6.2 coexistence: with a stand-in for the future real "pohyb" lesson in the content (as after activation), the migrated
-  // test-lesson fixtures (own test topic "test-svetlo") and the whole-lesson fixture (replaces "pohyb") both load without a duplicate ID.
+  // Coexistence (Phase 6H.6.2; Phase 6H.6.3 against the real activated lesson instead of a stand-in): the migrated test-lesson fixtures
+  // (own test topic "test-svetlo") load beside the real "pohyb" lesson, and the whole-lesson fixture replaces it; never a duplicate ID.
   {
-    const STAND_IN = `window.LearnContent.lessons.push(${JSON.stringify({ id: 'pohyb', title: 'Stand-in', objective: 'x', limitation: 'x', steps: [{ id: 'a', type: 'intro', title: 'Stand-in', text: 'x' }, { id: 'b', type: 'summary', title: 'Koniec', ideas: ['x'], text: 'x' }] })});`;
     const TEST = `window.LearnContent.topics.push({"id":"test-svetlo","title":"Testovacia lekcia","description":"Len na testovanie.","minutes":1}); window.LearnContent.lessons.push(${JSON.stringify({ id: 'test-svetlo', title: 'Svetlo — technický test', objective: 'x', limitation: 'x', steps: [{ id: 'svetlo', type: 'experiment', title: 'Svetlo', text: 'x', experiment: { kind: 'light-travel', journey: 'earth-moon' } }, { id: 'z', type: 'summary', title: 'Koniec', ideas: ['x'], text: 'x' }] })});`;
-    for (const [name, fixture, expect] of [['migrated test fixture', STAND_IN + '\n' + TEST, 'test'], ['whole-lesson fixture', STAND_IN + '\n' + inject(), 'lesson']]) {
+    for (const [name, fixture, expect] of [['migrated test fixture', TEST, 'test'], ['whole-lesson fixture', inject(l => { l.objective += ' (fixture)'; }), 'lesson']]) {
       const { pg, errors, rejected, context } = await open(browser, 1366, 768, { fixture });
-      const c = await pg.evaluate(() => ({ ids: window.LearnContent.lessons.map(l => l.id), pohyb: window.LearnContent.lessons.filter(l => l.id === 'pohyb').map(l => l.title) }));
+      const c = await pg.evaluate(() => ({ ids: window.LearnContent.lessons.map(l => l.id), pohyb: window.LearnContent.lessons.filter(l => l.id === 'pohyb').map(l => l.title), fixture: window.LearnContent.lessons.find(l => l.id === 'pohyb')?.objective.endsWith('(fixture)') }));
       let opened = null;
       if (expect === 'test') { await pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(x => x.querySelector('h3').textContent === 'Testovacia lekcia').querySelector('button').click(); }); await pg.waitForTimeout(400); opened = await pg.evaluate(() => ({ lesson: Learn.state.lesson, journey: lightStage.state().journey ?? null })); }
       else { await startLesson(pg); opened = { lesson: await pg.evaluate(() => Learn.state.lesson), heading: (await snap(pg)).heading }; }
-      check(`coexistence with a future real "pohyb" lesson — ${name}: one "pohyb" lesson (${JSON.stringify(c.pohyb)}), no duplicate ID, no error; the fixture lesson opens (${JSON.stringify(opened)})`,
-        errors.length === 0 && rejected.length === 0 && new Set(c.ids).size === c.ids.length && c.pohyb.length === 1 && (expect === 'test' ? c.pohyb[0] === 'Stand-in' && opened.lesson === 'test-svetlo' : c.pohyb[0] === 'Svetlo a vesmírne vzdialenosti' && opened.lesson === 'pohyb' && opened.heading === TITLES[0]), JSON.stringify({ c, opened, errors, rejected }));
+      check(`coexistence with the real "pohyb" lesson — ${name}: one "pohyb" lesson (${expect === 'test' ? 'the real one' : 'replaced by the fixture'}), no duplicate ID, no error; the fixture lesson opens (${JSON.stringify(opened)})`,
+        errors.length === 0 && rejected.length === 0 && new Set(c.ids).size === c.ids.length && c.pohyb.length === 1 && c.pohyb[0] === TOPIC && (expect === 'test' ? !c.fixture && opened.lesson === 'test-svetlo' : c.fixture && opened.lesson === 'pohyb' && opened.heading === TITLES[0]), JSON.stringify({ c, opened, errors, rejected }));
       await context.close();
     }
   }
-  // Production content (no fixture): the real "pohyb" topic stays inactive.
+  // Production content (no fixture), Phase 6H.6.3 activation candidate: the sixth topic is active and its lesson is exactly the
+  // approved eight-step lesson; the five existing lessons are unchanged; the old title is gone. (Until 6H.6.2 this checked "inactive".)
   {
-    const { pg, errors, context } = await open(browser, 1366, 768, { fixture: null });
+    const { pg, errors, rejected, context } = await open(browser, 1366, 768, { fixture: null });
     await pg.evaluate(() => Learn.enter()); await pg.waitForTimeout(300);
-    const cards = await topics(pg), real = cards.find(c => c.t === 'Pohyb vo vesmíre');
-    const content = await pg.evaluate(() => ({ pohyb: window.LearnContent.lessons.some(l => l.id === 'pohyb'), light: window.LearnContent.lessons.flatMap(l => l.steps).filter(s => s.experiment?.kind === 'light-travel').length }));
-    check('production content: the real topic "Pohyb vo vesmíre" stays inactive ("Pripravujeme", no button); no lesson uses a light experiment', !!real && !real.button && real.text.includes('Pripravujeme') && !content.pohyb && content.light === 0 && errors.length === 0, JSON.stringify({ real, content, errors }));
+    const cards = await topics(pg), real = cards.find(c => c.t === TOPIC);
+    const content = await pg.evaluate(() => { const c = window.LearnContent, l = c.lessons.find(x => x.id === 'pohyb');
+      return { lesson: l && { id: l.id, title: l.title, objective: l.objective, limitation: l.limitation, sources: l.sources, steps: l.steps }, topic: c.topics.find(t => t.id === 'pohyb'), old: c.topics.some(t => t.title === 'Pohyb vo vesmíre'),
+        light: c.lessons.flatMap(x => x.steps.filter(s => s.experiment?.kind === 'light-travel').map(s => `${x.id}:${s.experiment.journey}`)), existing: JSON.stringify({ topics: c.topics.slice(0, 5), lessons: c.lessons.slice(0, 5), planetGroups: c.planetGroups }) }; });
+    const approved = { id: lesson.id, title: lesson.title, objective: lesson.objective, limitation: lesson.limitation, sources: lesson.sources, steps: lesson.steps };
+    const existingHash = require('crypto').createHash('sha256').update(content.existing).digest('hex');
+    check('activation: the real sixth topic "Svetlo a vesmírne vzdialenosti" (id "pohyb") is active with description, 9 minutes and a start button; the old title "Pohyb vo vesmíre" is gone',
+      !!real && real.button && real.text.includes('Približne 9 min') && !/undefined|Pripravujeme/.test(real.text) && content.topic.minutes === 9 && content.topic.description === 'Zisti, ako ďaleko doletí svetlo za sekundu a ako dlho mu trvá cesta zo Slnka k planétam.' && !content.old, JSON.stringify({ real, topic: content.topic }));
+    check('activation: the real lesson is exactly the approved eight-step lesson (identical to fixtures/light-lesson.js); its three light steps name earth-moon, fifteen and planets',
+      JSON.stringify(content.lesson) === JSON.stringify(approved) && JSON.stringify(content.light) === JSON.stringify(['pohyb:earth-moon', 'pohyb:fifteen', 'pohyb:planets']), JSON.stringify(content.light));
+    check(`activation: the five existing lessons, their topic cards and the planet groups are unchanged (SHA-256 ${existingHash.slice(0, 12)}…)`, existingHash === EXISTING_HASH);
+    check('activation: no JS error and no rejected lesson in production content', errors.length === 0 && rejected.length === 0, [...errors, ...rejected].join('; '));
     await context.close();
   }
   console.log(`${passes} passed, ${failures} failed`);

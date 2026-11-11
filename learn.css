@@ -419,6 +419,27 @@ body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12
 .learn-light-lead[hidden], .learn-light-pick[hidden] { display: none; }
 .learn-light-feedback { margin: -4px 0 8px; font-size: 15px; color: #c3d2de; } /* Phase 6H.5.3.1: the planets guess feedback under its result */
 .learn-light-feedback[hidden] { display: none; }
+.learn-light-transition { margin: 0 0 6px; font-size: 15px; color: #a8dff0; } /* Phase 6H.6.3: a light step's lead-in from the previous experiment */
+.learn-light-transition[hidden] { display: none; }
+#learn-root[data-layout="side"] .learn-light-transition { font-size: 14px; margin-bottom: 4px; }
+/* Phase 6H.6.3.B – the light lesson on short landscape screens: the panel (side panel or sheet) scrolls as one, so its header (step
+   heading, Menej, Zavrieť) stays in place while the content scrolls under it. Scoped to this lesson; other lessons are unchanged. */
+@media (min-width: 701px) and (max-width: 900px) and (max-height: 600px) {
+  #learn-root.learn-panel[data-lesson="pohyb"] .learn-header { position: sticky; top: 0; z-index: 3; background: rgb(8, 19, 34); border-radius: 20px 20px 0 0; }
+}
+/* Phase 6H.6.3.B – the light lesson's summary: its three actions fit one row (on desktop the panel then shows all of them without
+   scrolling). The summary is the only step whose body has a list and a paragraph before its buttons. */
+#learn-root[data-lesson="pohyb"] .learn-body > ul + p ~ button { padding-inline: 10px; margin-right: 6px; }
+/* Phase 6H.6.3.C – the Mars stop in the light lesson's short landscape side panel: the Earth result, the Neptune question, the three
+   answers (one line each, still 44 px tall) and "Pokračovať k Neptúnu" fit together below the fixed header; the guess feedback
+   follows the action (visual order only; screen readers keep result → feedback → question). */
+@media (min-width: 701px) and (max-width: 900px) and (max-height: 600px) {
+  #learn-root[data-layout="side"][data-lesson="pohyb"] .learn-light-box[data-phase="mars"] .learn-light-feedback { order: 1; margin: 8px 0 0; }
+  #learn-root[data-layout="side"][data-lesson="pohyb"] .learn-light-box[data-phase="mars"] .learn-light-lead { margin-bottom: 4px; }
+  #learn-root[data-layout="side"][data-lesson="pohyb"] .learn-light-box[data-phase="mars"] .learn-light-choices { margin-bottom: 4px; }
+  #learn-root[data-layout="side"][data-lesson="pohyb"] .learn-light-box[data-phase="mars"] .learn-light-choices .learn-answer-text { font-size: 13px; white-space: nowrap; }
+  #learn-root[data-layout="side"][data-lesson="pohyb"] .learn-light-box[data-phase="mars"] .learn-light-choices .learn-answer { min-height: 32px; } /* 44 px with padding and border */
+} /* short landscape: transition, guesses and action fit the side panel */
 /* Phase 6H.5.3.2 – Sun-to-planets only. Desktop: the panel may use more of the screen's height, so the Mars question, the result line
    and the Neptune discovery are all in view without scrolling. Short phones: slightly tighter spacing between the panel's lines. */
 @media (min-width: 901px) { #learn-root.learn-panel.is-planets-experiment { max-height: calc(100dvh - 176px); } }

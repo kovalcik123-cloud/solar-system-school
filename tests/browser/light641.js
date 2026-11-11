@@ -154,7 +154,7 @@ const MAIN_STATE = () => { const r = v => v.toArray().map(x => +x.toFixed(9)).jo
     await p2.goto(`http://localhost:${PORT}/`); await p2.waitForTimeout(600); await p2.fill('#activation-code', 'NGV-2025'); await p2.evaluate(() => checkCode()); await p2.waitForTimeout(2200);
     await p2.evaluate(() => Learn.enter()); await p2.waitForTimeout(300);
     const topics = await p2.evaluate(() => [...document.querySelectorAll('.learn-topic')].map(c => ({ t: c.querySelector('h3').textContent, on: !!c.querySelector('button') && !c.querySelector('button').disabled })));
-    check('real catalogue: five topics active, "Pohyb vo vesmíre" inactive', topics.filter(t => t.on).length === 5 && topics.find(t => t.t === 'Pohyb vo vesmíre').on === false, JSON.stringify(topics));
+    check('real catalogue (Phase 6H.6.3 activation candidate): six topics active, the sixth "Svetlo a vesmírne vzdialenosti"', topics.length === 6 && topics.filter(t => t.on).length === 6 && topics[5].t === 'Svetlo a vesmírne vzdialenosti' && topics[5].on === true, JSON.stringify(topics));
     await ctx.close();
   }
   console.log(`${passes} passed, ${failures} failed`);
