@@ -5,7 +5,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const S = __dirname, ROOT = require('./env').ROOT, OUT = require('./env').out('light642'), PORT = Number(process.env.PORT || 8918);
 fs.mkdirSync(OUT, { recursive: true });
 const server = http.createServer((q, r) => { const u = decodeURIComponent(q.url.split('?')[0]); fs.readFile(path.join(ROOT, u === '/' ? 'index.html' : u), (e, d) => { if (e) { r.writeHead(404); r.end(); } else r.end(d); }); }).listen(PORT);
-const FIXTURE = `window.LearnContent.lessons.push(${JSON.stringify({ id: 'pohyb', title: 'Svetlo — technický test', objective: 'Len na testovanie.', limitation: 'Len na testovanie.', steps: [
+const FIXTURE = `window.LearnContent.topics.push({"id":"test-svetlo","title":"Testovacia lekcia","description":"Len na testovanie.","minutes":1}); window.LearnContent.lessons.push(${JSON.stringify({ id: 'test-svetlo', title: 'Svetlo — technický test', objective: 'Len na testovanie.', limitation: 'Len na testovanie.', steps: [
   { id: 'uvod', type: 'intro', title: 'Úvod — test', text: 'Len na testovanie.' },
   { id: 'svetlo15', type: 'experiment', title: 'Svetlo za 15 sekúnd', text: 'Len na testovanie.', experiment: { kind: 'light-travel', journey: 'fifteen' } },
   { id: 'zaver', type: 'summary', title: 'Koniec testu', ideas: ['Len na testovanie.'], text: 'Len na testovanie.' }] })});`;
@@ -29,7 +29,7 @@ async function open(browser, w, h, options = {}) {
   return { pg, errors, context };
 }
 const toStep = async pg => {
-  await pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Pohyb vo vesmíre').querySelector('button').click(); });
+  await pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Testovacia lekcia').querySelector('button').click(); });
   await pg.waitForTimeout(400); await pg.evaluate(() => document.querySelector('.learn-footer .learn-primary').click()); await pg.waitForTimeout(500);
 };
 const frames = (pg, n = 3) => pg.evaluate(n => new Promise(res => { let k = 0; const f = () => (++k >= n ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);

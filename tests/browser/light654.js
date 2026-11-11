@@ -6,7 +6,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const S = __dirname, ROOT = require('./env').ROOT, OUT = require('./env').out('light654'), PORT = Number(process.env.PORT || 8937);
 fs.mkdirSync(OUT, { recursive: true });
 const server = http.createServer((q, r) => { const u = decodeURIComponent(q.url.split('?')[0]); fs.readFile(path.join(ROOT, u === '/' ? 'index.html' : u), (e, d) => { if (e) { r.writeHead(404); r.end(); } else r.end(d); }); }).listen(PORT);
-const FIXTURE = `window.LearnContent.lessons.push(${JSON.stringify({ id: 'pohyb', title: 'Svetlo — technický test', objective: 'Len na testovanie.', limitation: 'Len na testovanie.', steps: [
+const FIXTURE = `window.LearnContent.topics.push({"id":"test-svetlo","title":"Testovacia lekcia","description":"Len na testovanie.","minutes":1}); window.LearnContent.lessons.push(${JSON.stringify({ id: 'test-svetlo', title: 'Svetlo — technický test', objective: 'Len na testovanie.', limitation: 'Len na testovanie.', steps: [
   { id: 'uvod', type: 'intro', title: 'Úvod — test', text: 'Len na testovanie.' },
   // Neutral technical placeholder (no experiment content). Its Earth–Moon demo only gives it the side-panel layout on short landscape screens;
   // the main scene with that demo is hidden while the light stage draws.
@@ -23,7 +23,7 @@ async function open(browser, w, h) {
   await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600);
   await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2800);
   await pg.evaluate(() => { if (areOrbitsActive) toggleOrbit(); });
-  await pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Pohyb vo vesmíre').querySelector('button').click(); });
+  await pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Testovacia lekcia').querySelector('button').click(); });
   await pg.waitForTimeout(500);
   // The neutral placeholder step; on phones its panel is collapsed with its own "Menej" button (a light step's panel is compact).
   await pg.evaluate(() => document.querySelector('.learn-footer .learn-primary').click()); await pg.waitForTimeout(500);

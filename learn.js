@@ -27,6 +27,8 @@ window.Learn = (() => {
   // The Earth–Moon light experiment (Phase 6H.3.2) shares the comparison steps' compact, side and panel layouts.
   const lightTravel = s => s?.type === 'experiment' && s.experiment.kind === 'light-travel';
   const planetsStep = s => lightTravel(s) && s.experiment.journey === 'planets'; // Phase 6H.5.3
+  // Light experiment journeys (Phase 6H.6.1; mandatory since Phase 6H.6.2). A missing or any other value is rejected.
+  const LIGHT_JOURNEYS = Object.freeze(['earth-moon', 'fifteen', 'planets']);
   const stageKind = kind => typeof kind === 'string' && Object.prototype.hasOwnProperty.call(adapter.stages ?? {}, kind);
   const experimentOf = s => s?.type !== 'experiment' ? null : stageKind(s.experiment.kind) ? adapter.stages[s.experiment.kind] : adapter.experiments[s.experiment.kind];
   const compactExperimentStep = s => dayNight(s) && shortExperimentLayout.matches || (moonPhases(s) || sizeComparison(s) || lightTravel(s)) && compactMoonLayout.matches;
@@ -156,7 +158,7 @@ window.Learn = (() => {
     for (const id of declared) for (const body of groupOf.get(id)) if (!bodies.has(body)) throw Error('Incomplete classification');
   }
   function validate() {
-    const ids = new Set(), groupOf = new Map();
+    const ids = new Set(), groupOf = new Map(), rejected = [];
     for (const [body, group] of validateGroups()) { if (!groupOf.has(group)) groupOf.set(group, new Set()); groupOf.get(group).add(body); }
     for (const l of data.lessons) {
       if (ids.has(l.id) || !data.topics.some(t => t.id === l.id)) throw Error('Invalid lesson ID');
@@ -180,11 +182,19 @@ window.Learn = (() => {
             if (keys.some(k => !['kind', 'start', 'reveal'].includes(k)) || !part(s.experiment.start) || !part(s.experiment.reveal)) throw Error('Invalid lesson experiment');
             if ((s.experiment.start !== undefined || s.experiment.reveal !== undefined) && !revealOf(s)) throw Error('Invalid lesson experiment');
           }
+          // An unsupported light journey never falls back to another experiment: the lesson is left out (its topic shows
+          // "Pripravujeme") and reported, instead of stopping Learn for every lesson.
+          if (kind === 'light-travel' && !LIGHT_JOURNEYS.includes(s.experiment.journey)) rejected.push({ lesson: l.id, step: s.id, journey: s.experiment.journey });
         }
         if (s.type === 'question' && (!s.options.some(o => o.id === s.correct) || new Set(s.options.map(o => o.id)).size !== s.options.length)) throw Error('Invalid lesson answer');
         if (s.type === 'tour') validateTour(s, groupOf);
         if (s.type === 'classify') validateClassify(s, groupOf);
       }
+    }
+    for (const r of rejected) {
+      const index = data.lessons.findIndex(l => l.id === r.lesson);
+      if (index >= 0) data.lessons.splice(index, 1);
+      console.error(`Learn: lesson "${r.lesson}" is not available – step "${r.step}" ${r.journey === undefined ? 'has no light journey' : `has an unsupported light journey ${JSON.stringify(r.journey)}`} (expected ${LIGHT_JOURNEYS.join(', ')}).`);
     }
   }
   // Tour and classification steps resolve their demonstration per stop; other steps keep step-level demos.

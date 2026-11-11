@@ -18,7 +18,7 @@ The unit tests for the physics modules stay in `tests/*.test.js` (Node's built-i
   `node tests/browser/fetch-vendor.js`
   This downloads `three@0.128.0` from the npm registry and writes `three.min.js` and `OrbitControls.js` to
   `tests/browser/vendor/` (git-ignored). To use files from another folder, set `THREE_VENDOR_DIR`.
-- Free local ports 8909–8951 (each script uses its own fixed port; set `PORT` to override for a single script).
+- Free local ports 8909–8955 (each script uses its own fixed port; set `PORT` to override for a single script).
 
 Rendering uses SwiftShader (software WebGL, started by the scripts), so no GPU is needed. Screenshots and logs go to
 `tests/browser/output/<script>/` (git-ignored).
@@ -33,6 +33,7 @@ node tests/browser/fetch-vendor.js     # once: three.js r128 files for the brows
 node tests/browser/run.js              # all browser suites, with a total
 node tests/browser/run.js planets      # Sun-to-planets regression suite only
 node tests/browser/run.js light        # Earth–Moon, 15-second experiment and Milky Way background
+node tests/browser/run.js lesson       # the whole Light Laboratory lesson (test-only fixture)
 node tests/browser/run.js learn6g      # Phase 6G Learn/Explore regressions
 node tests/browser/light662.js         # a single script
 ```
@@ -49,14 +50,22 @@ rendering; the planets suite about 10 minutes.
 | planets | `light654.js` | Functional continuity: exact 60× → 600× continuation, monotonic timeline, LightData arrival times, repeat, cleanup |
 | planets | `light661.js` | Learning flow in Learn: both predictions and every choice, feedback, explanation pausing the run, hidden tab, reduced motion, keyboard, screen-reader announcements, no Earth–Moon fallback, cleanup, `pohyb` inactive |
 | planets | `light662.js` | Responsive UX and accessibility at 1366×768, 390×844, 390×667, 844×390: every state, no panel overlap (scale label included), target and real time visible, focus, touch targets, explanation reading view |
+| lesson | `light671.js` | The whole eight-step Light Laboratory lesson from `fixtures/light-lesson.js` (test-only; the real "pohyb" topic stays inactive) at 1366×768, 390×844, 390×667, 844×390: forwards and backwards, journey switching and cleanup, predictions and session state, questions, leaving and returning, Explore and Quiz, focus, announcements, hidden tab, reduced motion, journey validation |
 | light | `light632.js` | Earth–Moon (1 s) experiment |
 | light | `light641.js` | 15-second experiment scene |
 | light | `light642.js` | 15-second prediction |
 | light | `light644.js` | Milky Way background (approved M15 variant) |
 | learn6g | `insp671.js`, `e2e661.js`, `overlay661a.js`, `orbits6541.js` | Phase 6G planet inspection, nine-step lesson, comparison overlay, orbit view |
 
+Fixture conventions (Phase 6H.6.2): test lessons use the test-only lesson and topic id `test-svetlo` (topic card „Testovacia lekcia"),
+never the id of a real topic, so they can coexist with the future real "pohyb" lesson. The whole-lesson fixture
+`fixtures/light-lesson.js` stands for that future lesson: it replaces a "pohyb" lesson if one exists and adds it otherwise. Every
+light-travel step names its `journey` (`earth-moon`, `fifteen` or `planets`); Learn leaves out a lesson with a missing or unsupported
+journey and reports it in the console.
+
 `light662.js` reuses the setup part of `light661.js`, and `light654.js` that of `light652.js` (read from this folder); keep them
-together. `fixtures/light62-fixture.js` is the test fixture `light632.js` reads.
+together. `fixtures/light62-fixture.js` is the test fixture `light632.js` reads; `fixtures/light-lesson.js` is the complete Light Laboratory lesson
+that `light671.js` injects (with the future topic card "Svetlo a vesmírne vzdialenosti"), only inside the test browser.
 
 ## Dependencies on temporary paths or unavailable assets
 

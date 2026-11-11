@@ -6,9 +6,10 @@ const { spawnSync } = require('child_process'), path = require('path');
 const GROUPS = {
   planets: ['light652', 'light653', 'light654', 'light661', 'light662'],                 // Sun-to-planets: stage, responsive, functional, learning flow, responsive UX
   light: ['light632', 'light641', 'light642', 'light644'],                                // Earth–Moon, 15 s scene and prediction, Milky Way background
-  learn6g: ['insp671', 'e2e661', 'overlay661a', 'orbits6541']                             // Phase 6G Learn/Explore regressions
+  learn6g: ['insp671', 'e2e661', 'overlay661a', 'orbits6541'],                            // Phase 6G Learn/Explore regressions
+  lesson: ['light671']                                                                    // the whole eight-step Light Laboratory lesson (test-only fixture)
 };
-GROUPS.all = [...GROUPS.light, ...GROUPS.planets, ...GROUPS.learn6g];
+GROUPS.all = [...GROUPS.light, ...GROUPS.planets, ...GROUPS.lesson, ...GROUPS.learn6g];
 const args = process.argv.slice(2), names = (args.length ? args : ['all']).flatMap(a => GROUPS[a] ?? [a]);
 let total = { passed: 0, failed: 0 }, broken = [];
 for (const name of names) {

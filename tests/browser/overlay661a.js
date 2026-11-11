@@ -6,7 +6,7 @@ const S = __dirname, ROOT = require('./env').ROOT, OUT = require('./env').out('f
 fs.mkdirSync(OUT, { recursive: true });
 const PORT = Number(process.env.PORT || 8881);
 const server = http.createServer((q, r) => { const u = decodeURIComponent(q.url.split('?')[0]); fs.readFile(path.join(ROOT, u === '/' ? 'index.html' : u), (e, d) => { if (e) { r.writeHead(404); r.end(); } else r.end(d); }); }).listen(PORT);
-const lesson = (steps, title = 'Porovnanie veľkostí — test') => `window.LearnContent.lessons.push(${JSON.stringify({ id: 'pohyb', title, objective: 'Len na testovanie.', limitation: 'Len na testovanie.', steps })});`;
+const lesson = (steps, title = 'Porovnanie veľkostí — test') => `window.LearnContent.topics.push({"id":"test-svetlo","title":"Testovacia lekcia","description":"Len na testovanie.","minutes":1}); window.LearnContent.lessons.push(${JSON.stringify({ id: 'test-svetlo', title, objective: 'Len na testovanie.', limitation: 'Len na testovanie.', steps })});`;
 const REVEAL = { kind: 'size-comparison', start: { pair: ['jupiter', 'earth'] }, reveal: { pair: ['sun', 'jupiter'] } };
 const FIXTURE = lesson([
   { id: 'uvod', type: 'intro', title: 'Jupiter verzus Slnko — test', text: 'Len na testovanie.' },
@@ -34,7 +34,7 @@ async function open(browser, w, h, options = {}) {
   return { pg, errors, context };
 }
 const settle = async pg => { await pg.waitForTimeout(200); await pg.waitForFunction(() => !cameraTransition, null, { timeout: 20000 }).catch(() => {}); await pg.waitForTimeout(150); };
-const enterFixture = pg => pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Pohyb vo vesmíre').querySelector('button').click(); });
+const enterFixture = pg => pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Testovacia lekcia').querySelector('button').click(); });
 const toComparison = async pg => { await enterFixture(pg); await pg.evaluate(() => document.querySelector('.learn-footer .learn-primary').click()); await pg.waitForTimeout(400); };
 const idle = pg => pg.waitForFunction(() => !comparisonStage.state().busy, null, { timeout: 10000 });
 const PRIMARY = '[data-focus="comparison-primary"]', BACK = '[data-focus="comparison-back"]';
