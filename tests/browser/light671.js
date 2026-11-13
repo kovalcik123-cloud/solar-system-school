@@ -189,11 +189,14 @@ const JOURNEY = [null, 'earth-moon', 'fifteen', 'planets', null, null, null, nul
       }
       if (i === 6) await roundTrip(); // the summary has no Back button: the backward pass starts at the last question
       if (i === 7) {
-        check(`${tag} summary "${s.heading}": the four ideas`, lesson.steps[7].ideas.every(t => s.body.includes(t)), s.body.slice(0, 500));
+        check(`${tag} summary "${s.heading}": the five ideas`, lesson.steps[7].ideas.length === 5 && lesson.steps[7].ideas.every(t => s.body.includes(t)), s.body.slice(0, 500));
         const sum = await pg.evaluate(() => { const root = document.getElementById('learn-root'), body = root.querySelector('.learn-body'), scroller = root.dataset.layout === 'side' ? root : body, v = scroller.getBoundingClientRect(), p = root.getBoundingClientRect();
           const header = root.querySelector('.learn-header'), top = getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().bottom : v.top;
-          return { buttons: [...body.querySelectorAll(':scope > button')].map(b => { const r = b.getBoundingClientRect(); return { t: b.textContent, inView: r.top >= Math.max(top, p.top) - 0.5 && r.bottom <= Math.min(v.bottom, p.bottom, innerHeight) + 0.5 }; }), scrolls: body.scrollHeight > body.clientHeight + 1 }; });
-        if (w > 900) check(`${tag} summary: "Späť na témy", "Objavuj" and "Otestuj sa" fully visible and clickable without scrolling`, sum.buttons.length === 3 && sum.buttons.every(b => b.inView) && !sum.scrolls, JSON.stringify(sum));
+          // Phase 6H.8.B: the three actions are in the panel footer (below the scrolling ideas), no longer at the end of the body.
+          const hit = b => { const r = b.getBoundingClientRect(), e = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2); return !!e && (e === b || b.contains(e)); };
+          return { buttons: [...root.querySelectorAll('.learn-footer.learn-summary-actions button')].map(b => { const r = b.getBoundingClientRect(); return { t: b.textContent, inView: r.top >= Math.max(top, p.top) - 0.5 && r.bottom <= Math.min(p.bottom, innerHeight) + 0.5, hit: hit(b) }; }), inBody: body.querySelectorAll('button').length, footerBelowBody: root.querySelector('.learn-footer').getBoundingClientRect().top >= v.bottom - 0.5 || root.dataset.layout === 'side', panelScrolls: root.scrollHeight > root.clientHeight + 1 }; });
+        check(`${tag} summary: "Späť na témy", "Objavuj" and "Otestuj sa" are in the footer once, none in the body`, sum.buttons.map(b => b.t).join() === 'Späť na témy,Objavuj,Otestuj sa' && sum.inBody === 0, JSON.stringify(sum));
+        if (w !== 844) check(`${tag} summary: "Späť na témy", "Objavuj" and "Otestuj sa" fully visible and clickable without scrolling (the ideas may scroll above them)`, sum.buttons.length === 3 && sum.buttons.every(b => b.inView && b.hit) && !sum.panelScrolls, JSON.stringify(sum));
         if (w === 844) { const hd = await head(pg), bad = await focusSweep(pg);
           check(`${tag} summary: the heading stays visible while the panel scrolls; Tab reaches all three actions and shows each fully`, hd.sticky && hd.heading && bad.length === 0, JSON.stringify({ hd, bad })); }
         await shot('8-summary');

@@ -221,8 +221,8 @@ const shot = (pg, name) => pg.screenshot({ path: path.join(OUT, name) });
       await next(pg);
     }
     // Step 9: summary.
-    const sum = await pg.evaluate(() => ({ h: document.getElementById('learn-heading').textContent, ideas: [...document.querySelectorAll('#learn-root .learn-body li')].map(li => li.textContent), buttons: [...document.querySelectorAll('#learn-root .learn-body button')].map(b => b.textContent) }));
-    check(`${tag} step 9 summary: title, five key ideas, existing end buttons`, sum.h === TITLES[8] && sum.ideas.length === 5 && sum.ideas.filter(t => /11-krát|10-krát|760-krát|dráhu Marsu|osobitne/.test(t)).length === 5 && sum.buttons.join() === 'Späť na témy,Objavuj,Otestuj sa', JSON.stringify(sum));
+    const sum = await pg.evaluate(() => ({ h: document.getElementById('learn-heading').textContent, ideas: [...document.querySelectorAll('#learn-root .learn-body li')].map(li => li.textContent), buttons: [...document.querySelectorAll('#learn-root .learn-footer button')].map(b => b.textContent), inBody: document.querySelectorAll('#learn-root .learn-body button').length }));
+    check(`${tag} step 9 summary: title, five key ideas, existing end buttons (in the panel footer since Phase 6H.8.B, none in the body)`, sum.h === TITLES[8] && sum.ideas.length === 5 && sum.ideas.filter(t => /11-krát|10-krát|760-krát|dráhu Marsu|osobitne/.test(t)).length === 5 && sum.buttons.join() === 'Späť na témy,Objavuj,Otestuj sa' && sum.inBody === 0, JSON.stringify(sum));
     await sm('11-summary');
     await pg.evaluate(() => Learn.leave()); await settle(pg); await pg.waitForTimeout(300);
     // Re-entry starts at the introduction; the Jupiter–Sun step starts fresh.

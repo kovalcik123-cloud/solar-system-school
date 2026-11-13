@@ -1086,10 +1086,16 @@ window.Learn = (() => {
       }
       if (s.type === 'summary') {
         const list = el('ul'); s.ideas.forEach(t => list.append(el('li', t))); body.append(list, el('p', s.text));
-        body.append(button('Späť na témy', home), button('Objavuj', leave), button('Otestuj sa', () => { leave(); adapter.quiz(); }, 'learn-primary'));
       }
     }
     root.append(body);
+    // A summary's three actions sit in the panel's footer, like every other step's navigation (Phase 6H.8.B): the ideas scroll
+    // above them, so the actions stay in view however long the summary is.
+    if (lesson && lesson.steps[step].type === 'summary') {
+      const footer = el('footer', null, 'learn-footer learn-summary-actions');
+      footer.append(button('Späť na témy', home), button('Objavuj', leave), button('Otestuj sa', () => { leave(); adapter.quiz(); }, 'learn-primary'));
+      root.append(footer);
+    }
     if (lesson && lesson.steps[step].type !== 'summary') {
       const footer = el('footer', null, 'learn-footer');
       const s = lesson.steps[step], back = neighbour(-1), forward = neighbour(1);

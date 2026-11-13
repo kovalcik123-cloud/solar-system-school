@@ -34,6 +34,7 @@ node tests/browser/run.js              # all browser suites, with a total
 node tests/browser/run.js planets      # Sun-to-planets regression suite only
 node tests/browser/run.js light        # Earth–Moon, 15-second experiment and Milky Way background
 node tests/browser/run.js lesson       # the whole Light Laboratory lesson (test-only fixture)
+node tests/browser/run.js summary      # every lesson's summary: the three actions in the panel footer
 node tests/browser/run.js learn6g      # Phase 6G Learn/Explore regressions
 node tests/browser/light662.js         # a single script
 ```
@@ -51,6 +52,7 @@ rendering; the planets suite about 10 minutes.
 | planets | `light661.js` | Learning flow in Learn: both predictions and every choice, feedback, explanation pausing the run, hidden tab, reduced motion, keyboard, screen-reader announcements, no Earth–Moon fallback, cleanup, `pohyb` inactive |
 | planets | `light662.js` | Responsive UX and accessibility at 1366×768, 390×844, 390×667, 844×390: every state, no panel overlap (scale label included), target and real time visible, focus, touch targets, explanation reading view |
 | lesson | `light671.js` | The whole eight-step Light Laboratory lesson from `fixtures/light-lesson.js` (test-only; the real "pohyb" topic stays inactive) at 1366×768, 390×844, 390×667, 844×390: forwards and backwards, journey switching and cleanup, predictions and session state, questions, leaving and returning, Explore and Quiz, focus, announcements, hidden tab, reduced motion, journey validation |
+| summary | `summary68.js` | The real lessons (no fixture), Phase 6H.8.B: all six summaries at 1366×768, 1366×657, 1280×720, 390×844, 390×667, 844×390 – the three actions in the panel footer, visible without scrolling (844×390: by scrolling the panel), keyboard order, each action's destination; the light lesson's five ideas, 15-second transition and final question wording |
 | light | `light632.js` | Earth–Moon (1 s) experiment |
 | light | `light641.js` | 15-second experiment scene |
 | light | `light642.js` | 15-second prediction |

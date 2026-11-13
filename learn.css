@@ -427,9 +427,10 @@ body.is-comparison #learn-root.learn-panel[data-layout="side"] { bottom: calc(12
 @media (min-width: 701px) and (max-width: 900px) and (max-height: 600px) {
   #learn-root.learn-panel[data-lesson="pohyb"] .learn-header { position: sticky; top: 0; z-index: 3; background: rgb(8, 19, 34); border-radius: 20px 20px 0 0; }
 }
-/* Phase 6H.6.3.B – the light lesson's summary: its three actions fit one row (on desktop the panel then shows all of them without
-   scrolling). The summary is the only step whose body has a list and a paragraph before its buttons. */
-#learn-root[data-lesson="pohyb"] .learn-body > ul + p ~ button { padding-inline: 10px; margin-right: 6px; }
+/* Phase 6H.8.B – every lesson's summary: its three actions sit in the panel footer (the ideas scroll above them) and fit one row
+   in the desktop panel. The short landscape side panel keeps its own, more specific footer button rule. */
+.learn-summary-actions { gap: 6px; }
+#learn-root .learn-summary-actions button { padding-inline: 10px; }
 /* Phase 6H.6.3.C – the Mars stop in the light lesson's short landscape side panel: the Earth result, the Neptune question, the three
    answers (one line each, still 44 px tall) and "Pokračovať k Neptúnu" fit together below the fixed header; the guess feedback
    follows the action (visual order only; screen readers keep result → feedback → question). */

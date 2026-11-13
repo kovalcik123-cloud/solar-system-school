@@ -23,7 +23,7 @@ const lesson = Object.freeze({
       experiment: { kind: 'light-travel', journey: 'earth-moon' } },
     // Phase 6H.6.3: a transition is shown in the panel before the light starts (also on phones); the 15 s sentence lives only there.
     { id: 'patnast-sekund', type: 'experiment', title: 'Svetlo za 15 sekúnd',
-      transition: 'Za jednu sekundu svetlo takmer doletelo k Mesiacu. Kam sa dostane za 15 sekúnd?',
+      transition: 'Za sekundu svetlo prešlo asi štyri pätiny cesty k Mesiacu. A za 15 sekúnd?',
       experiment: { kind: 'light-travel', journey: 'fifteen' } },
     { id: 'k-planetam', type: 'experiment', title: 'Svetlo zo Slnka k planétam',
       transition: 'K planétam je to oveľa ďalej. Prehrávanie zrýchlime, ale svetlo bude letieť stále rovnako rýchlo.',
@@ -39,11 +39,11 @@ const lesson = Object.freeze({
       correct: 'pred-8-min', correctFeedback: 'Správne! Svetlo, ktoré práve vidíme, vyšlo zo Slnka asi pred 8 minútami.',
       incorrectFeedback: 'Skús to znova. Koľko času potrebuje svetlo na cestu zo Slnka k Zemi?' },
     { id: 'otazka-sekunda', type: 'question', title: 'Ako ďaleko doletí svetlo za sekundu?', text: 'Kam sa dostane svetlo vyslané zo Zeme za jednu sekundu?', next: 'Dokončiť lekciu',
-      options: [{ id: 'slnko', text: 'Až k Slnku.' }, { id: 'slovensko', text: 'Len na druhý koniec Slovenska.' }, { id: 'mesiac', text: 'Takmer k Mesiacu.' }],
-      correct: 'mesiac', correctFeedback: 'Správne! Za jednu sekundu svetlo prejde takmer 300 000 km – takmer celú cestu k Mesiacu.',
+      options: [{ id: 'slnko', text: 'Až k Slnku.' }, { id: 'slovensko', text: 'Len na druhý koniec Slovenska.' }, { id: 'mesiac', text: 'Asi štyri pätiny cesty k Mesiacu.' }],
+      correct: 'mesiac', correctFeedback: 'Správne! Za jednu sekundu svetlo prejde takmer 300 000 km – približne štyri pätiny cesty zo Zeme k Mesiacu.',
       incorrectFeedback: 'Skús to znova. Spomeň si na prvý pokus so Zemou a Mesiacom.' },
     { id: 'zaver', type: 'summary', title: 'Čo sme objavili?',
-      ideas: ['Svetlo preletí za sekundu takmer 300 000 km.', 'Za 1 sekundu takmer doletí k Mesiacu, za 15 sekúnd 11,7-krát ďalej.', 'Zo Slnka k Zemi letí asi 8 minút, k Neptúnu viac ako 4 hodiny.', 'Zrýchlené prehrávanie nemení rýchlosť svetla.'],
+      ideas: ['Svetlo preletí za sekundu takmer 300 000 km.', 'Za 1 sekundu svetlo prejde asi štyri pätiny cesty k Mesiacu.', 'Za 15 sekúnd prejde vzdialenosť približne 11,7-krát väčšiu, než je vzdialenosť Zem–Mesiac.', 'Zo Slnka k Zemi letí asi 8 minút, k Neptúnu viac ako 4 hodiny.', 'Zrýchlené prehrávanie nemení rýchlosť svetla.'],
       text: 'Pokračuj v objavovaní alebo si vyskúšaj kvíz o planétach.' }
   ]
 });

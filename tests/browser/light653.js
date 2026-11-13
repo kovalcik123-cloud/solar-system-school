@@ -135,10 +135,12 @@ async function tabTo(pg, label) {
     await pg.evaluate(() => document.querySelector('.learn-footer .learn-primary').click()); await pg.waitForTimeout(500);
     const next = await pg.evaluate(() => ({ title: document.querySelector('#learn-root h2, #learn-root .learn-title')?.textContent ?? '', active: lightStage.active, overlay: document.getElementById('light-stage-overlay').hidden }));
     check(`"Ďalej" from the preview goes to the fixture's own next step ("${next.title.trim()}") and ends the planets stage`, /Koniec testu/.test(next.title) && !next.active && next.overlay, JSON.stringify(next));
-    // Back to the preview step: Learn shows its panel again, but the planets stage does not restart by itself.
-    await pg.evaluate(() => document.querySelector('.learn-footer .learn-secondary, .learn-footer button:not(.learn-primary)')?.click()); await pg.waitForTimeout(400);
+    // Back to the preview step: Learn shows its panel again, but the planets stage does not restart by itself. The fixture's next step
+    // is its summary, which has no Back button: as before Phase 6H.8.B nothing is clicked there (the summary's own footer actions are
+    // excluded), so the lesson stays on "Koniec testu" and "Späť na témy" is exercised by the next check.
+    await pg.evaluate(() => document.querySelector('.learn-footer:not(.learn-summary-actions) .learn-secondary, .learn-footer:not(.learn-summary-actions) button:not(.learn-primary)')?.click()); await pg.waitForTimeout(400);
     const back = await pg.evaluate(() => ({ active: lightStage.active, title: document.querySelector('#learn-root h2')?.textContent ?? '' }));
-    check(`after leaving the preview step ("${back.title.trim()}") the planets stage does not re-activate the planets stage (only a direct begin() call starts it)`, !back.active, JSON.stringify(back));
+    check(`after leaving the preview step ("${back.title.trim()}") the planets stage does not re-activate the planets stage (only a direct begin() call starts it)`, !back.active && /Koniec testu/.test(back.title), JSON.stringify(back));
     await pg.evaluate(() => { const b = [...document.querySelectorAll('#learn-root button')].find(x => ['Témy', 'Späť na témy'].includes(x.textContent.trim())); b?.click(); }); await pg.waitForTimeout(500);
     const topics = await pg.evaluate(() => ({ cards: document.querySelectorAll('.learn-topic').length, active: lightStage.active }));
     check(`"Témy" returns to the topic list (${topics.cards} topics); nothing else opens; stage inactive`, topics.cards >= 6 && !topics.active, JSON.stringify(topics));
