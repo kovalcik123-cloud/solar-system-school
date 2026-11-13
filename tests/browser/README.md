@@ -35,6 +35,7 @@ node tests/browser/run.js planets      # Sun-to-planets regression suite only
 node tests/browser/run.js light        # Earth–Moon, 15-second experiment and Milky Way background
 node tests/browser/run.js lesson       # the whole Light Laboratory lesson (test-only fixture)
 node tests/browser/run.js summary      # every lesson's summary: the three actions in the panel footer
+node tests/browser/run.js catalogue    # the Learn topic catalogue: six cards in view on desktop
 node tests/browser/run.js learn6g      # Phase 6G Learn/Explore regressions
 node tests/browser/light662.js         # a single script
 ```
@@ -53,6 +54,7 @@ rendering; the planets suite about 10 minutes.
 | planets | `light662.js` | Responsive UX and accessibility at 1366×768, 390×844, 390×667, 844×390: every state, no panel overlap (scale label included), target and real time visible, focus, touch targets, explanation reading view |
 | lesson | `light671.js` | The whole eight-step Light Laboratory lesson from `fixtures/light-lesson.js` (test-only; the real "pohyb" topic stays inactive) at 1366×768, 390×844, 390×667, 844×390: forwards and backwards, journey switching and cleanup, predictions and session state, questions, leaving and returning, Explore and Quiz, focus, announcements, hidden tab, reduced motion, journey validation |
 | summary | `summary68.js` | The real lessons (no fixture), Phase 6H.8.B: all six summaries at 1366×768, 1366×657, 1280×720, 390×844, 390×667, 844×390 – the three actions in the panel footer, visible without scrolling (844×390: by scrolling the panel), keyboard order, each action's destination; the light lesson's five ideas, 15-second transition and final question wording |
+| catalogue | `catalogue68.js` | The Learn topic catalogue with the real lessons, Phase 6H.8.C: at 1920×1080, 1920×945, 1440×900, 1366×768, 1366×657, 1280×720 all six cards and buttons in view without scrolling (at least 12 px spare), texts and font sizes unchanged, simulation controls hidden and out of the Tab order, restored in lessons, Explore and after the Quiz; scroll fallback at 1366×640 and 1280×609; tablet and phone layouts identical with and without the Phase 6H.8.C rules |
 | light | `light632.js` | Earth–Moon (1 s) experiment |
 | light | `light641.js` | 15-second experiment scene |
 | light | `light642.js` | 15-second prediction |

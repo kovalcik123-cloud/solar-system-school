@@ -191,6 +191,8 @@
         body.is-quiz .simulation-controls { visibility: hidden; }
         body.is-comparison .simulation-controls { visibility: hidden; }
         body.is-light-stage .simulation-controls { visibility: hidden; }
+        /* Phase 6H.8.C: the desktop Learn catalogue uses the space of the simulation controls (hidden and not focusable while it is open). */
+        @media (min-width: 1200px) { body:has(#learn-root.learn-home:not([hidden])) .simulation-controls { visibility: hidden; } }
         #quiz-overlay, #info-card { box-sizing: border-box; width: min(370px, calc(100% - 24px)); max-width: 370px; max-height: calc(100dvh - 180px); overflow-y: auto; touch-action: pan-y pinch-zoom; }
         #quiz-overlay button, #results-screen button { min-height: 44px; }
         #results-screen { box-sizing: border-box; padding: 12px; }
