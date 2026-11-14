@@ -145,3 +145,72 @@ test('precision: core values unrounded; formatting is text only and does not alt
   assert.ok(!Number.isInteger(L.sunToPlanet('earth').lightSeconds));
   assert.match(L.formatKm(1000), / km$/); // non-breaking space before the unit
 });
+
+// Phase 6H.9.1.D: LightData.formatClock, the fixed-length clock of the live Sun-to-planets readout. Display only; formatDuration (above) is unchanged.
+test('formatClock: minutes and seconds always have two digits, in the 60× form (no hours)', () => {
+  const c = s => L.formatClock(s);
+  assert.equal(c(0), '00\u00a0min 00\u00a0s');                // initial zero
+  assert.equal(c(5), '00\u00a0min 05\u00a0s');                // single-digit seconds
+  assert.equal(c(9), '00\u00a0min 09\u00a0s');
+  assert.equal(c(10), '00\u00a0min 10\u00a0s');               // 09 → 10 seconds
+  assert.equal(c(59), '00\u00a0min 59\u00a0s');
+  assert.equal(c(60), '01\u00a0min 00\u00a0s');               // 59 seconds → 1 minute
+  assert.equal(c(9 * 60 + 9), '09\u00a0min 09\u00a0s');       // single-digit minutes
+  assert.equal(c(9 * 60 + 59), '09\u00a0min 59\u00a0s');
+  assert.equal(c(10 * 60), '10\u00a0min 00\u00a0s');          // 09 → 10 minutes
+  assert.equal(c(L.sunToPlanet('mars').lightSeconds), '12\u00a0min 40\u00a0s'); // the Mars stop
+  assert.equal(c(59 * 60 + 59), '59\u00a0min 59\u00a0s');
+  assert.equal(c(3600), '60\u00a0min 00\u00a0s');             // the no-hours form never drops hours silently: minutes keep counting
+});
+
+test('formatClock: the 600× form always starts with the hours (no leading zero) and keeps two-digit minutes and seconds', () => {
+  const c = s => L.formatClock(s, true);
+  assert.equal(c(0), '0\u00a0h 00\u00a0min 00\u00a0s');
+  assert.equal(c(L.sunToPlanet('mars').lightSeconds), '0\u00a0h 12\u00a0min 40\u00a0s'); // the start of the second leg
+  assert.equal(c(59 * 60 + 59), '0\u00a0h 59\u00a0min 59\u00a0s');
+  assert.equal(c(3600), '1\u00a0h 00\u00a0min 00\u00a0s');   // 59 min 59 s → 1 hour
+  assert.equal(c(3600 + 9 * 60 + 59), '1\u00a0h 09\u00a0min 59\u00a0s');
+  assert.equal(c(3600 + 10 * 60), '1\u00a0h 10\u00a0min 00\u00a0s'); // 09 → 10 minutes
+  assert.equal(c(2 * 3600 + 7 * 60 + 4), '2\u00a0h 07\u00a0min 04\u00a0s');
+  assert.equal(c(2 * 3600 + 7 * 60 + 59), '2\u00a0h 07\u00a0min 59\u00a0s');
+  assert.equal(c(2 * 3600 + 8 * 60), '2\u00a0h 08\u00a0min 00\u00a0s');
+  assert.equal(c(L.sunToPlanet('neptune').lightSeconds), '4\u00a0h 10\u00a0min 05\u00a0s'); // the Neptune arrival
+  assert.equal(c(10 * 3600), '10\u00a0h 00\u00a0min 00\u00a0s');
+});
+
+test('formatClock: whole seconds, rounded once, like formatDuration (59,6 s never reads as "60 s")', () => {
+  assert.equal(L.formatClock(0.4), '00\u00a0min 00\u00a0s');
+  assert.equal(L.formatClock(0.5), '00\u00a0min 01\u00a0s');
+  assert.equal(L.formatClock(4.49), '00\u00a0min 04\u00a0s');
+  assert.equal(L.formatClock(59.6), '01\u00a0min 00\u00a0s');
+  assert.equal(L.formatClock(59.6, true), '0\u00a0h 01\u00a0min 00\u00a0s');
+  assert.equal(L.formatClock(3599.6, true), '1\u00a0h 00\u00a0min 00\u00a0s');
+  assert.equal(L.formatClock(L.sunToPlanet('mars').lightSeconds), '12\u00a0min 40\u00a0s'); // 760,3387 s
+  // The same seconds as formatDuration for every planet: only the layout of the digits differs.
+  for (const id of L.PLANETS) {
+    const t = L.sunToPlanet(id).lightSeconds, total = Math.round(t);
+    assert.equal(L.formatClock(t, true).replace(/\u00a0/g, ' ').split(' ').filter((x, i) => i % 2 === 0).map(Number).reduce((sum, v, i) => sum + v * [3600, 60, 1][i], 0), total, id);
+  }
+});
+
+test('formatClock: no-break space between each number and its unit, ordinary space between the groups; the length is constant within a form', () => {
+  const pattern = /^\d{2}\u00a0min \d{2}\u00a0s$/, withHours = /^\d\u00a0h \d{2}\u00a0min \d{2}\u00a0s$/;
+  const lengths = new Set(), longer = new Set();
+  for (let s = 0; s <= 760; s++) { const t = L.formatClock(s); assert.match(t, pattern, String(s)); lengths.add(t.length); }
+  for (let s = 760; s <= 15005; s++) { const t = L.formatClock(s, true); assert.match(t, withHours, String(s)); longer.add(t.length); }
+  assert.deepEqual([...lengths], [11], 'the 60× form always has 11 characters');
+  assert.deepEqual([...longer], [15], 'the 600× form always has 15 characters');
+  assert.equal(L.formatClock(65).split(' ').length, 2, 'two number-unit pairs, one ordinary space between them');
+  assert.equal(L.formatClock(65, true).split(' ').length, 3, 'three pairs with hours, two ordinary spaces');
+});
+
+test('formatClock: input checks as everywhere in LightData; formatDuration is unchanged', () => {
+  assert.throws(() => L.formatClock(-1), { name: 'RangeError' }); // LightData runs in its own realm in these tests: compare by name
+  assert.throws(() => L.formatClock(NaN), { name: 'TypeError' });
+  assert.throws(() => L.formatClock(Infinity), { name: 'RangeError' });
+  assert.throws(() => L.formatClock('5'), { name: 'TypeError' });
+  assert.equal(L.formatClock(-0), '00\u00a0min 00\u00a0s');
+  assert.equal(plain(L.formatDuration(3600)), '1 h 0 min 0 s');   // the natural text of the explanations, labels and announcements
+  assert.equal(plain(L.formatDuration(L.sunToPlanet('neptune').lightSeconds)), '4 h 10 min 5 s');
+  assert.equal(plain(L.formatDuration(L.sunToPlanet('mars').lightSeconds)), '12 min 40 s');
+});

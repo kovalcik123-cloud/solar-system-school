@@ -3394,7 +3394,7 @@
                 stage.tone.skyGain.value = backdrop.brightness; stage.tone.skyLift.value = backdrop.lift; // uniforms only, no recompile
             }
             // Sun to planets: the light, arrival rings and labels (from the recorded arrivals) and the readouts. Time is physical time,
-            // shown in whole seconds as h / min / s; "≈" marks the rounded distance; the playback speed is in the badge.
+            // shown in whole seconds as a fixed-length clock (LightData.formatClock); "≈" marks the rounded distance; the playback speed is in the badge.
             function placePlanets() {
                 const { seconds, km } = reading(), counting = phase === 'countdown';
                 drawLight(LightSim.kmToWorld(km), layout.perPx);
@@ -3403,7 +3403,8 @@
                 stage.solarMarks.forEach((m, i) => { const r = reached.has(m.id); m.ring.visible = r && m.dot.visible; stage.planetLabels[i].el.classList.toggle('is-reached', r); });
                 stage.groupLabel.classList.toggle('is-reached', reached.has('mars'));
                 const mil = `${new Intl.NumberFormat('sk-SK', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(km / 1e6)} mil. km`;
-                const time = counting ? String(countdownLeft) : LightData.formatDuration(seconds);
+                // The big readout keeps its length while it runs (Phase 6H.9.1.D): the form is chosen by the leg (hours only in the 600× view), never by the value.
+                const time = counting ? String(countdownLeft) : LightData.formatClock(seconds, solarView() === 'outer');
                 const distance = counting ? 'Pozor…' : km > 0 ? `skutočný čas letu svetla · ≈ ${mil}` : 'skutočný čas letu svetla · 0 km';
                 const shown = layout.compact ? (counting ? `${time} · Pozor…` : `${time} · ${km > 0 ? `≈ ${mil}` : '0 km'}`) : time;
                 if (stage.time.textContent !== shown) stage.time.textContent = shown;

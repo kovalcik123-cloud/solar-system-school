@@ -92,11 +92,21 @@ window.LightData = (() => {
     const total = Math.round(seconds), h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
     return [h && `${h} h`, (h || m) && `${m} min`, `${s} s`].filter(Boolean).join(' ');
   }
+  // A fixed-length clock for a live readout (Phase 6H.9.1.D; display only, the physical time is never changed). Minutes and seconds always
+  // have two digits, so the text keeps its length while it counts: "00 min 05 s", "12 min 40 s". With `withHours` the hours come first, without
+  // a leading zero: "0 h 12 min 40 s", "4 h 10 min 05 s". The caller picks the form for a whole experiment leg, not per value, so hours are
+  // never dropped or added while the readout runs (without hours the minutes simply keep counting past 59). Whole seconds, rounded once
+  // like formatDuration; a no-break space joins each number to its unit.
+  function formatClock(seconds, withHours = false) {
+    const total = Math.round(amount(seconds, 'seconds')), s = total % 60, two = n => String(n).padStart(2, '0');
+    if (withHours) return `${Math.floor(total / 3600)} h ${two(Math.floor(total % 3600 / 60))} min ${two(s)} s`;
+    return `${two(Math.floor(total / 60))} min ${two(s)} s`;
+  }
 
   return Object.freeze({
     C_M_PER_S, C_KM_PER_S, AU_KM, earthMoon, EARTH_MOON_MODELS, PLANETS, sunDistanceAu,
     lightDistanceKm, lightTravelSeconds, kmToAu, auToKm,
     earthMoonDistanceKm, earthMoonTravelSeconds, earthMoonProgress, inEarthMoonDistances,
-    isPlanet, sunToPlanet, formatKm, formatDuration
+    isPlanet, sunToPlanet, formatKm, formatDuration, formatClock
   });
 })();

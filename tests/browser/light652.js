@@ -122,7 +122,7 @@ function layoutCheck(tag, moment, g) {
       shown.length === 5 && /Jupiter43 min 16 s/.test(shown.map(x => x[0]).join()) && /Neptún4 h 10 min 5 s/.test(shown.map(x => x[0]).join()) && shown.every(x => x[1]) && /Merkúr – Marsspolu len pre prehľadnosť/.test(shown.map(x => x[0]).join()));
     const read = await pg.evaluate(() => [document.querySelector('#light-stage-overlay .light-time').textContent, document.querySelector('#light-stage-overlay .light-distance').textContent].map(t => t.replace(/\u00a0/g, ' ')));
     notes.push(`${tag} Neptune readout: ${JSON.stringify(read)} · compact ${s.view.compact}`);
-    check(`${tag}: readout shows the real physical time 4 h 10 min 5 s (not playback time)`, read[0].startsWith('4 h 10 min 5 s'));
+    check(`${tag}: readout shows the real physical time 4 h 10 min 05 s (not playback time)`, read[0].startsWith('4 h 10 min 05 s'));
     layoutCheck(tag, 'B at Neptune', await pg.evaluate(`(${BOXES})()`)); await shot('6-B-neptune');
     check(`${tag}: no JS or WebGL errors`, errors.length === 0, errors.join('; '));
     await context.close();

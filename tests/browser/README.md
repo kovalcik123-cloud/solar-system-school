@@ -36,6 +36,7 @@ node tests/browser/run.js light        # Earth–Moon, 15-second experiment and 
 node tests/browser/run.js lesson       # the whole Light Laboratory lesson (test-only fixture)
 node tests/browser/run.js summary      # every lesson's summary: the three actions in the panel footer
 node tests/browser/run.js catalogue    # the Learn topic catalogue: six cards in view on desktop
+node tests/browser/run.js timer        # the Sun-to-planets live readout: stable length and position
 node tests/browser/run.js learn6g      # Phase 6G Learn/Explore regressions
 node tests/browser/light662.js         # a single script
 ```
@@ -57,6 +58,7 @@ rendering; the planets suite about 10 minutes.
 | catalogue | `catalogue68.js` | The Learn topic catalogue with the real lessons, Phase 6H.8.C: at 1920×1080, 1920×945, 1440×900, 1366×768, 1366×657, 1280×720 all six cards and buttons in view without scrolling (at least 12 px spare), texts and font sizes unchanged, simulation controls hidden and out of the Tab order, restored in lessons, Explore and after the Quiz; scroll fallback at 1366×640 and 1280×609; tablet and phone layouts identical with and without the Phase 6H.8.C rules |
 | deps | `deps69.js` | Phase 6H.9.1.B: the real app with every request to another host blocked – three.js r128 and OrbitControls load from `vendor/three-r128/` in order and byte-identical to upstream, revision 128, every THREE name the app uses is defined; Explore, the catalogue, all six lessons and a full Quiz work; no external request is attempted (1366×768, 390×844, 844×390) |
 | deps | `failure69.js` | Phase 6H.9.1.C: start-up failure handling – three.js or OrbitControls missing (404, blocked, throwing, empty), WebGL unavailable, `init()` failing (controlled errors): one Slovak `role="alert"` message, one "Načítať znova" button (keyboard, reloads the page), no spinner, code gate closed, page inert; the normal start unchanged; phones and landscape |
+| timer | `timer69.js` | Phase 6H.9.1.D: the big live readout of the Sun-to-planets experiment, driven frame by frame with a fake clock – "MM min SS s" in the 60× leg, "H h MM min SS s" in the 600× leg; box, unit letters and last digits never move (±0.05 px) across every digit boundary and the hour; text = `LightData.formatClock` of the stage's physical time; exact time, 60×/600× playback and arrivals; natural wording everywhere else; Earth–Moon and 15 s readouts unchanged; five viewports |
 | light | `light632.js` | Earth–Moon (1 s) experiment |
 | light | `light641.js` | 15-second experiment scene |
 | light | `light642.js` | 15-second prediction |
