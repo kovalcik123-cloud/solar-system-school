@@ -34,6 +34,10 @@
             padding: 12px 30px; background: #44aadd; border: none; color: white;
             border-radius: 5px; cursor: pointer; text-transform: uppercase; font-weight: bold; width: 100%;
         }
+        /* Phase 6H.9.1.C: a fatal start-up error replaces the code prompt in the same box (see StartupGuard below). */
+        #startup-error { color: #ffd9d2; font-size: 17px; line-height: 1.55; margin: 18px 0 22px; }
+        #gatekeeper #startup-retry { color: #04121f; text-transform: none; font-size: 16px; min-height: 48px; }
+        #gatekeeper.is-fatal .login-box { box-sizing: border-box; width: 90%; max-width: 440px; padding: 32px 28px; } /* fits a phone; the normal code prompt is unchanged */
 
         /* --- PLANET NAVIGATION BAR --- */
         #planet-nav {
@@ -437,6 +441,51 @@
     <script src="light-data.js"></script>
     <script src="light-sim.js"></script>
     <script>
+        // Phase 6H.9.1.C – start-up guard. The scripts in <head> are blocking, so by now three.js and OrbitControls have loaded or failed.
+        // check() runs before the application script needs THREE and stops the start when the 3D engine cannot run: the loading spinner
+        // is removed, the code prompt is replaced by a short Slovak message (role="alert") and a button that reloads the page.
+        // fail() is also called by checkCode() when init() throws. It shows one message only (the first failure) and never starts anything.
+        window.StartupGuard = (function () {
+            var MESSAGES = {
+                dependencies: 'Aplikáciu sa nepodarilo načítať. Skúste stránku načítať znova. Ak problém pretrváva, obráťte sa na učiteľa alebo správcu siete.',
+                webgl: 'Toto zariadenie alebo prehliadač nepodporuje 3D grafiku (WebGL). Skúste aktuálny prehliadač Chrome, Edge alebo Firefox.',
+                init: 'Aplikáciu sa nepodarilo spustiť. Skúste stránku načítať znova.'
+            };
+            var guard = { failed: null, fail: fail, check: check };
+            function fail(kind) {
+                if (guard.failed) return false;
+                guard.failed = MESSAGES.hasOwnProperty(kind) ? kind : 'init';
+                var loader = document.getElementById('loader'); if (loader) loader.remove();
+                var gate = document.getElementById('gatekeeper'), box = gate.querySelector('.login-box');
+                // Everything but the access box is switched off, so nothing that looks like the application can be reached or seen.
+                Array.prototype.forEach.call(document.body.children, function (element) {
+                    if (element !== gate && element.tagName !== 'SCRIPT') { element.inert = true; element.style.display = 'none'; }
+                });
+                gate.style.display = '';
+                gate.classList.add('is-fatal');
+                var input = document.getElementById('activation-code'), enter = box.querySelector('button'), hint = box.querySelector('p');
+                [input, enter].forEach(function (control) { control.disabled = true; });
+                [input, enter, hint, document.getElementById('error-msg')].forEach(function (element) { element.hidden = true; element.style.display = 'none'; });
+                var message = document.createElement('div'), retry = document.createElement('button');
+                message.id = 'startup-error'; message.setAttribute('role', 'alert'); message.textContent = MESSAGES[guard.failed];
+                retry.id = 'startup-retry'; retry.type = 'button'; retry.textContent = 'Načítať znova'; retry.setAttribute('aria-describedby', 'startup-error');
+                retry.addEventListener('click', function () { location.reload(); });
+                box.append(message, retry); retry.focus();
+                return true;
+            }
+            function check() {
+                if (typeof THREE !== 'object' || !THREE || typeof THREE.WebGLRenderer !== 'function' || typeof THREE.OrbitControls !== 'function') return fail('dependencies');
+                var gl = null, canvas = null;
+                try { canvas = document.createElement('canvas'); gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl'); } catch (error) { gl = null; }
+                if (!gl) return fail('webgl');
+                var lose = gl.getExtension && gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext(); // the test context is not kept
+                return false;
+            }
+            return guard;
+        })();
+        StartupGuard.check();
+    </script>
+    <script>
         // CONFIG: Moons Added!
         const planetData = [
             { name: "Slnko", radius: 20, distance3D: 0, speed: 0, color: 0xffaa00, texture: "sun.jpg", realDist: "0 km", realDiam: "1.39M km", orbit: "N/A", rotation: "27 dní", fact: "Slnko tvorí 99,86% hmotnosti celej sústavy." },
@@ -492,12 +541,17 @@
         });
 
         function checkCode() {
+            if (StartupGuard.failed) return; // a fatal start-up error is shown: the code gate stays closed
             const inputHash = btoa(document.getElementById('activation-code').value.toUpperCase());
             if(inputHash === "TkdWLTIwMjU=" || inputHash === "UkFBQkU=" || inputHash === "VEFLVElL") {
                 document.getElementById('gatekeeper').style.display = 'none';
                 document.getElementById('side-ui').style.visibility = 'visible';
                 document.getElementById('planet-nav').style.display = 'flex';
-                init();
+                try { init(); } catch (error) {
+                    // Only a failure of the 3D start-up itself is reported here (the error stays in the console); later errors are not caught.
+                    console.error(error);
+                    StartupGuard.fail(/webgl/i.test(String(error && error.message)) ? 'webgl' : 'init');
+                }
             } else { document.getElementById('error-msg').style.display = 'block'; }
         }
 

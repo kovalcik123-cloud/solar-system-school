@@ -34,8 +34,9 @@ test('vendor: the library is revision 128 and the controls attach to THREE', () 
 test('index.html: three.js, then OrbitControls, by relative path, as classic scripts before the application scripts', () => {
   const sources = scriptTags.filter(Boolean);
   assert.deepEqual(sources, [`${VENDOR}/three.min.js`, `${VENDOR}/OrbitControls.js`, 'learn-content.sk.js', 'learn.js', 'size-data.js', 'light-data.js', 'light-sim.js']);
-  assert.equal(scriptTags.filter(src => src === null).length, 1, 'one inline application script');
-  assert.equal(scriptTags.indexOf(null), scriptTags.length - 1, 'the inline application script comes last');
+  // Phase 6H.9.1.C: two inline scripts at the end: the start-up guard (checks the libraries and WebGL), then the application script.
+  assert.equal(scriptTags.filter(src => src === null).length, 2, 'the start-up guard and the inline application script');
+  assert.equal(scriptTags.indexOf(null), scriptTags.length - 2, 'both inline scripts come last, after every external script');
   const tags = [...html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']vendor\/three-r128\/[^"']+["'][^>]*>/g)].map(m => m[0]);
   assert.equal(tags.length, 2);
   for (const tag of tags) assert.doesNotMatch(tag, /\b(?:type|async|defer|integrity|crossorigin)\b/, 'plain classic script');

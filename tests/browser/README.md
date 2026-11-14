@@ -29,7 +29,7 @@ From the repository root:
 ```sh
 node --test tests/*.test.js            # unit tests (LightData, LightSim, vendor files and script paths)
 node tests/browser/verify-vendor.js    # optional: compare vendor/three-r128 with npm three@0.128.0
-node tests/browser/run.js deps         # committed three.js files; the app with every other host blocked
+node tests/browser/run.js deps         # committed three.js files with every other host blocked; start-up failure handling
 node tests/browser/run.js              # all browser suites, with a total
 node tests/browser/run.js planets      # Sun-to-planets regression suite only
 node tests/browser/run.js light        # Earth–Moon, 15-second experiment and Milky Way background
@@ -56,6 +56,7 @@ rendering; the planets suite about 10 minutes.
 | summary | `summary68.js` | The real lessons (no fixture), Phase 6H.8.B: all six summaries at 1366×768, 1366×657, 1280×720, 390×844, 390×667, 844×390 – the three actions in the panel footer, visible without scrolling (844×390: by scrolling the panel), keyboard order, each action's destination; the light lesson's five ideas, 15-second transition and final question wording |
 | catalogue | `catalogue68.js` | The Learn topic catalogue with the real lessons, Phase 6H.8.C: at 1920×1080, 1920×945, 1440×900, 1366×768, 1366×657, 1280×720 all six cards and buttons in view without scrolling (at least 12 px spare), texts and font sizes unchanged, simulation controls hidden and out of the Tab order, restored in lessons, Explore and after the Quiz; scroll fallback at 1366×640 and 1280×609; tablet and phone layouts identical with and without the Phase 6H.8.C rules |
 | deps | `deps69.js` | Phase 6H.9.1.B: the real app with every request to another host blocked – three.js r128 and OrbitControls load from `vendor/three-r128/` in order and byte-identical to upstream, revision 128, every THREE name the app uses is defined; Explore, the catalogue, all six lessons and a full Quiz work; no external request is attempted (1366×768, 390×844, 844×390) |
+| deps | `failure69.js` | Phase 6H.9.1.C: start-up failure handling – three.js or OrbitControls missing (404, blocked, throwing, empty), WebGL unavailable, `init()` failing (controlled errors): one Slovak `role="alert"` message, one "Načítať znova" button (keyboard, reloads the page), no spinner, code gate closed, page inert; the normal start unchanged; phones and landscape |
 | light | `light632.js` | Earth–Moon (1 s) experiment |
 | light | `light641.js` | 15-second experiment scene |
 | light | `light642.js` | 15-second prediction |

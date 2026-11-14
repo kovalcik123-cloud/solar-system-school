@@ -47,8 +47,8 @@ const drawn = pg => pg.evaluate(() => new Promise(res => requestAnimationFrame((
 
     // 1. Loading: local files, right order, right bytes, nothing external.
     const scripts = await pg.evaluate(() => [...document.scripts].map(s => s.getAttribute('src')));
-    check(`${tag}: index.html references three.js then OrbitControls by relative path, before the five application scripts and the inline script`,
-      JSON.stringify(scripts) === JSON.stringify(['vendor/three-r128/three.min.js', 'vendor/three-r128/OrbitControls.js', 'learn-content.sk.js', 'learn.js', 'size-data.js', 'light-data.js', 'light-sim.js', null]), JSON.stringify(scripts));
+    check(`${tag}: index.html references three.js then OrbitControls by relative path, before the five application scripts and the two inline scripts`,
+      JSON.stringify(scripts) === JSON.stringify(['vendor/three-r128/three.min.js', 'vendor/three-r128/OrbitControls.js', 'learn-content.sk.js', 'learn.js', 'size-data.js', 'light-data.js', 'light-sim.js', null, null]), JSON.stringify(scripts)); // the last two are the inline start-up guard and the inline application script
     const order = log.requests.filter(u => /\.js$/.test(u)).map(u => u.replace(`${ORIGIN}/`, ''));
     check(`${tag}: the browser requested the scripts from this site only, three.js first, OrbitControls second`, order[0] === 'vendor/three-r128/three.min.js' && order[1] === 'vendor/three-r128/OrbitControls.js' && order.length === 7, JSON.stringify(order));
     check(`${tag}: both library files were served (HTTP 200) and are byte-identical to three.js r128 (SHA-256 of the received bodies)`, log.responses.get(THREE_URL) === 200 && log.responses.get(CONTROLS_URL) === 200 && log.bodies[THREE_URL] === SHA256[THREE_URL] && log.bodies[CONTROLS_URL] === SHA256[CONTROLS_URL], JSON.stringify(log.bodies));

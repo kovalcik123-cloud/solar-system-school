@@ -10,7 +10,7 @@ const GROUPS = {
   lesson: ['light671'],                                                                   // the whole eight-step Light Laboratory lesson (test-only fixture)
   summary: ['summary68'],                                                                 // every lesson's summary: the three actions in the panel footer (Phase 6H.8.B)
   catalogue: ['catalogue68'],                                                             // the Learn topic catalogue: six cards in view on desktop (Phase 6H.8.C)
-  deps: ['deps69']                                                                        // the committed three.js r128 files; the app with every other host blocked (Phase 6H.9.1.B)
+  deps: ['deps69', 'failure69']                                                           // the committed three.js r128 files with every other host blocked (6H.9.1.B); start-up failure handling (6H.9.1.C)
 };
 GROUPS.all = [...GROUPS.deps, ...GROUPS.light, ...GROUPS.planets, ...GROUPS.lesson, ...GROUPS.summary, ...GROUPS.catalogue, ...GROUPS.learn6g];
 const args = process.argv.slice(2), names = (args.length ? args : ['all']).flatMap(a => GROUPS[a] ?? [a]);
