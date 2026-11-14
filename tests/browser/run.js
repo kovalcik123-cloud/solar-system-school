@@ -1,5 +1,5 @@
 // Runs browser regression harnesses one after another and sums their results.
-// Usage: node tests/browser/run.js [planets | light | lesson | summary | catalogue | learn6g | all | <harness name> ...]   (default: all)
+// Usage: node tests/browser/run.js [deps | planets | light | lesson | summary | catalogue | learn6g | all | <harness name> ...]   (default: all)
 // Each harness prints PASS/FAIL lines and ends with "<n> passed, <m> failed". Exit code 1 if anything failed or a harness crashed.
 'use strict';
 const { spawnSync } = require('child_process'), path = require('path');
@@ -9,9 +9,10 @@ const GROUPS = {
   learn6g: ['insp671', 'e2e661', 'overlay661a', 'orbits6541'],                            // Phase 6G Learn/Explore regressions
   lesson: ['light671'],                                                                   // the whole eight-step Light Laboratory lesson (test-only fixture)
   summary: ['summary68'],                                                                 // every lesson's summary: the three actions in the panel footer (Phase 6H.8.B)
-  catalogue: ['catalogue68']                                                              // the Learn topic catalogue: six cards in view on desktop (Phase 6H.8.C)
+  catalogue: ['catalogue68'],                                                             // the Learn topic catalogue: six cards in view on desktop (Phase 6H.8.C)
+  deps: ['deps69']                                                                        // the committed three.js r128 files; the app with every other host blocked (Phase 6H.9.1.B)
 };
-GROUPS.all = [...GROUPS.light, ...GROUPS.planets, ...GROUPS.lesson, ...GROUPS.summary, ...GROUPS.catalogue, ...GROUPS.learn6g];
+GROUPS.all = [...GROUPS.deps, ...GROUPS.light, ...GROUPS.planets, ...GROUPS.lesson, ...GROUPS.summary, ...GROUPS.catalogue, ...GROUPS.learn6g];
 const args = process.argv.slice(2), names = (args.length ? args : ['all']).flatMap(a => GROUPS[a] ?? [a]);
 let total = { passed: 0, failed: 0 }, broken = [];
 for (const name of names) {

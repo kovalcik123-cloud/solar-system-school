@@ -15,8 +15,6 @@ const check = (label, ok, detail = '') => { ok ? passes++ : failures++; console.
 async function open(browser, w, h, fixture = true) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: true }), pg = await context.newPage(), errors = [];
   pg.on('pageerror', e => errors.push(e.message)); pg.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-  await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') }));
-  await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
   if (fixture) await pg.route('**/learn-content.sk.js', async r => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\n' + FIXTURE }); });
   await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600);
   await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2800);
@@ -100,7 +98,6 @@ async function tabTo(pg, label) {
     const FIX2 = FIXTURE.replace(`{"id":"nahlad"`, `{"id":"svetlo1","type":"experiment","title":"Svetlo za jednu sekundu","text":"Len na testovanie.","experiment":{"kind":"light-travel","journey":"earth-moon"}},{"id":"svetlo15","type":"experiment","title":"Svetlo za 15 sekúnd","text":"Len na testovanie.","experiment":{"kind":"light-travel","journey":"fifteen"}},{"id":"nahlad"`);
     for (const step of [1, 2]) {
       const context = await browser.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true }), pg = await context.newPage();
-      await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') })); await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
       await pg.route('**/learn-content.sk.js', async r => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\n' + FIX2 }); });
       await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600); await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2800);
       await pg.evaluate(() => { Learn.enter(); [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Testovacia lekcia').querySelector('button').click(); }); await pg.waitForTimeout(500);

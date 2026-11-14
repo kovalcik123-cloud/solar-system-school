@@ -19,8 +19,6 @@ async function open(browser, w, h, { fixture = null, options = {} } = {}) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 500, ...options }), pg = await context.newPage(), errors = [], rejected = [];
   pg.on('pageerror', e => errors.push(e.message));
   pg.on('console', m => { if (m.type() !== 'error' && !/THREE\.WebGL|shader/i.test(m.text())) return; if (REJECTED.test(m.text())) rejected.push(m.text()); else errors.push('console: ' + m.text()); });
-  await pg.route('**/three.min.js', r => r.fulfill({ path: env.vendor('three.min.js') }));
-  await pg.route('**/OrbitControls.js', r => r.fulfill({ path: env.vendor('OrbitControls.js') }));
   if (fixture) await pg.route('**/learn-content.sk.js', async r => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\n' + fixture }); });
   await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600);
   await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2800);

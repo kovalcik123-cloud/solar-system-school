@@ -27,8 +27,6 @@ async function open(browser, w, h, without = false) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 900 });
   const pg = await context.newPage(), errors = [];
   pg.on('pageerror', e => errors.push(e.message)); pg.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-  await pg.route('**/three.min.js', r => r.fulfill({ path: ENV.vendor('three.min.js') }));
-  await pg.route('**/OrbitControls.js', r => r.fulfill({ path: ENV.vendor('OrbitControls.js') }));
   if (without) { await pg.route('**/learn.css', r => r.fulfill({ contentType: 'text/css', body: cssWithout() })); await pg.route(`http://localhost:${PORT}/`, r => r.fulfill({ contentType: 'text/html', body: htmlWithout() })); }
   await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600);
   await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2400);

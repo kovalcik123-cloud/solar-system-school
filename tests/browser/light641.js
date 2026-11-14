@@ -18,8 +18,6 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 async function open(browser, w, h) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 500 }), pg = await context.newPage(), errors = [];
   pg.on('pageerror', e => errors.push(e.message)); pg.on('console', m => { if (m.type() === 'error' || /THREE\.WebGL|shader/i.test(m.text())) errors.push('console: ' + m.text()); });
-  await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') }));
-  await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
   await pg.route('**/learn-content.sk.js', async r => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\n' + FIXTURE }); });
   await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600);
   await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2400);
@@ -150,7 +148,6 @@ const MAIN_STATE = () => { const r = v => v.toArray().map(x => +x.toFixed(9)).jo
     check('no JS or WebGL errors (real clock)', errors.length === 0, errors.join('; '));
     await context.close();
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } }), p2 = await ctx.newPage();
-    await p2.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') })); await p2.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
     await p2.goto(`http://localhost:${PORT}/`); await p2.waitForTimeout(600); await p2.fill('#activation-code', 'NGV-2025'); await p2.evaluate(() => checkCode()); await p2.waitForTimeout(2200);
     await p2.evaluate(() => Learn.enter()); await p2.waitForTimeout(300);
     const topics = await p2.evaluate(() => [...document.querySelectorAll('.learn-topic')].map(c => ({ t: c.querySelector('h3').textContent, on: !!c.querySelector('button') && !c.querySelector('button').disabled })));

@@ -14,11 +14,10 @@ The unit tests for the physics modules stay in `tests/*.test.js` (Node's built-i
   (developed with Playwright 1.63):
   `npm install --no-save playwright && npx playwright install chromium`
   (or a global installation on `NODE_PATH`). No `package.json` is added to the repository.
-- The three.js r128 files the app loads from its CDNs, stored locally so the tests run offline and reproducibly:
-  `node tests/browser/fetch-vendor.js`
-  This downloads `three@0.128.0` from the npm registry and writes `three.min.js` and `OrbitControls.js` to
-  `tests/browser/vendor/` (git-ignored). To use files from another folder, set `THREE_VENDOR_DIR`.
-- Free local ports 8909–8955 (each script uses its own fixed port; set `PORT` to override for a single script).
+- No download is needed for three.js: the app loads r128 from the committed `vendor/three-r128/` folder and the scripts serve and
+  test exactly those files (Phase 6H.9.1.B). Optionally, `node tests/browser/verify-vendor.js` compares them with the npm package
+  `three@0.128.0` (needs the npm registry; writes nothing into the repository).
+- Free local ports 8909–8970 (each script uses its own fixed port; set `PORT` to override for a single script).
 
 Rendering uses SwiftShader (software WebGL, started by the scripts), so no GPU is needed. Screenshots and logs go to
 `tests/browser/output/<script>/` (git-ignored).
@@ -28,8 +27,9 @@ Rendering uses SwiftShader (software WebGL, started by the scripts), so no GPU i
 From the repository root:
 
 ```sh
-node --test tests/*.test.js            # unit tests (LightData, LightSim)
-node tests/browser/fetch-vendor.js     # once: three.js r128 files for the browser tests
+node --test tests/*.test.js            # unit tests (LightData, LightSim, vendor files and script paths)
+node tests/browser/verify-vendor.js    # optional: compare vendor/three-r128 with npm three@0.128.0
+node tests/browser/run.js deps         # committed three.js files; the app with every other host blocked
 node tests/browser/run.js              # all browser suites, with a total
 node tests/browser/run.js planets      # Sun-to-planets regression suite only
 node tests/browser/run.js light        # Earth–Moon, 15-second experiment and Milky Way background
@@ -55,6 +55,7 @@ rendering; the planets suite about 10 minutes.
 | lesson | `light671.js` | The whole eight-step Light Laboratory lesson from `fixtures/light-lesson.js` (test-only; the real "pohyb" topic stays inactive) at 1366×768, 390×844, 390×667, 844×390: forwards and backwards, journey switching and cleanup, predictions and session state, questions, leaving and returning, Explore and Quiz, focus, announcements, hidden tab, reduced motion, journey validation |
 | summary | `summary68.js` | The real lessons (no fixture), Phase 6H.8.B: all six summaries at 1366×768, 1366×657, 1280×720, 390×844, 390×667, 844×390 – the three actions in the panel footer, visible without scrolling (844×390: by scrolling the panel), keyboard order, each action's destination; the light lesson's five ideas, 15-second transition and final question wording |
 | catalogue | `catalogue68.js` | The Learn topic catalogue with the real lessons, Phase 6H.8.C: at 1920×1080, 1920×945, 1440×900, 1366×768, 1366×657, 1280×720 all six cards and buttons in view without scrolling (at least 12 px spare), texts and font sizes unchanged, simulation controls hidden and out of the Tab order, restored in lessons, Explore and after the Quiz; scroll fallback at 1366×640 and 1280×609; tablet and phone layouts identical with and without the Phase 6H.8.C rules |
+| deps | `deps69.js` | Phase 6H.9.1.B: the real app with every request to another host blocked – three.js r128 and OrbitControls load from `vendor/three-r128/` in order and byte-identical to upstream, revision 128, every THREE name the app uses is defined; Explore, the catalogue, all six lessons and a full Quiz work; no external request is attempted (1366×768, 390×844, 844×390) |
 | light | `light632.js` | Earth–Moon (1 s) experiment |
 | light | `light641.js` | 15-second experiment scene |
 | light | `light642.js` | 15-second prediction |
@@ -75,4 +76,4 @@ that `light671.js` injects (with the future topic card "Svetlo a vesmírne vzdia
 
 None. The scripts were moved from a temporary development folder; only their paths were changed (repository root, vendor files,
 output folder, fixture file) — assertions and behaviour are unchanged. The app's own textures are served from the repository.
-The three.js files are not committed; they are fetched as described above.
+The three.js files are committed in `vendor/three-r128/` and served from the repository like the textures.

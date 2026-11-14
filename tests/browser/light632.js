@@ -16,8 +16,6 @@ async function open(browser, w, h, options = {}) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: options.touch ?? w < 500, reducedMotion: options.reduced ? 'reduce' : 'no-preference' });
   const pg = await context.newPage(), errors = [];
   pg.on('pageerror', e => errors.push(e.message)); pg.on('console', m => { if (m.type() === 'error' || /THREE\.WebGL|shader/i.test(m.text())) errors.push('console: ' + m.text()); });
-  await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') }));
-  await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
   await pg.route('**/learn-content.sk.js', async r => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\n' + FIXTURE }); });
   await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600);
   await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2600);
@@ -271,7 +269,6 @@ const click = (pg, focus) => pg.click(`[data-focus="${focus}"]`, { force: true }
   // 5. Real catalogue (no fixture; Phase 6H.6.3 activation candidate): six active topics (until 6H.6.2: "Pohyb vo vesmíre" inactive).
   {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } }), pg = await ctx.newPage();
-    await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') })); await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
     await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600); await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2200);
     await pg.evaluate(() => Learn.enter()); await pg.waitForTimeout(300);
     const topics = await pg.evaluate(() => [...document.querySelectorAll('.learn-topic')].map(c => ({ t: c.querySelector('h3').textContent, on: !!c.querySelector('button') && !c.querySelector('button').disabled })));

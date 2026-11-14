@@ -28,3 +28,24 @@ License: [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://cr
 Verification: the repository file's SHA-1 `20f8d2530941fa2671f3475abe88e48cdc062f0f` (SHA-256 `ec2240e6f3784d962ab81609b228bfd470e87c86d1fed5e99134d4cd3de24239`, 251 454 bytes) matches the SHA-1 published for the Wikimedia Commons file; the match was checked by the project owner against the Commons file metadata.
 
 The image file is unmodified. The application maps it onto the background sky sphere in Explore and, in the Light Laboratory experiments, shows it as a static backdrop with an adjusted tone (displayed about 1.5 times brighter than the source by a small tone adjustment; the file itself is not changed). No endorsement by Solar System Scope is implied.
+
+# Third-party software
+
+## three.js
+
+The application's 3D rendering uses **three.js r128** (npm package `three` version 0.128.0), served from this repository. No file is loaded from an external server.
+
+- `vendor/three-r128/three.min.js` — the three.js library (upstream `build/three.min.js`).
+- `vendor/three-r128/OrbitControls.js` — the camera controls (upstream `examples/js/controls/OrbitControls.js`).
+- `vendor/three-r128/LICENSE` — the full licence notice (upstream `LICENSE`).
+
+Source: [three.js on GitHub, tag r128](https://github.com/mrdoob/three.js/tree/r128); the same files are published in the npm package [`three@0.128.0`](https://www.npmjs.com/package/three/v/0.128.0).
+License: MIT. Copyright © 2010-2021 three.js authors. The full text is in `vendor/three-r128/LICENSE` and must stay with the files.
+
+The three files are unmodified copies, byte-identical to the GitHub tag r128 and to the npm package (verified on 2026-11-13). SHA-256:
+
+- `three.min.js`: `9274bbcec8d96168626c732b5d31c775aa8cfb7eaa0599bec0c175908a2c1ce2`
+- `OrbitControls.js`: `02bb4ade710f3e607329e37a21f098bc3ac70eb6e33daf8a65e79f4db785e7b2`
+- `LICENSE`: `7dddf7c5b8fd10ee654db8857d75d104b5557889aa5a91fc4ca545ea7c07062f`
+
+`tests/vendor.test.js` checks these checksums; `node tests/browser/verify-vendor.js` compares the two JavaScript files with the npm package again.

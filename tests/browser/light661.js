@@ -15,8 +15,6 @@ const check = (label, ok, detail = '') => { ok ? passes++ : failures++; console.
 async function open(browser, w, h, options = {}) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 500, ...options }), pg = await context.newPage(), errors = [];
   pg.on('pageerror', e => errors.push(e.message)); pg.on('console', m => { if (m.type() === 'error' || /THREE\.WebGL|shader/i.test(m.text())) errors.push('console: ' + m.text()); });
-  await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') }));
-  await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
   await pg.route('**/learn-content.sk.js', async r => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()) + '\n' + FIXTURE }); });
   await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600);
   await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2800);
@@ -207,7 +205,6 @@ const primary = pg => pg.evaluate(() => document.querySelector('.learn-light-box
   // E. Production content (no fixture), Phase 6H.6.3 activation candidate.
   {
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 } }), pg = await context.newPage();
-    await pg.route('**/three.min.js', r => r.fulfill({ path: require('./env').vendor('three.min.js') })); await pg.route('**/OrbitControls.js', r => r.fulfill({ path: require('./env').vendor('OrbitControls.js') }));
     await pg.goto(`http://localhost:${PORT}/`); await pg.waitForTimeout(600); await pg.fill('#activation-code', 'NGV-2025'); await pg.evaluate(() => checkCode()); await pg.waitForTimeout(2500);
     // Phase 6H.6.3 activation candidate: the planets journey is used exactly once, by the real sixth lesson (until 6H.6.2: test fixtures only).
     const prod = await pg.evaluate(() => { Learn.enter(); const card = [...document.querySelectorAll('.learn-topic')].find(c => c.querySelector('h3').textContent === 'Svetlo a vesmírne vzdialenosti');
